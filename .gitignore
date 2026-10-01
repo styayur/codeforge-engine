@@ -1,0 +1,11 @@
+/target/
+**/target/
+**/node_modules/
+**/dist/
+**/.vite/
+**/.tmp/
+**/*.tsbuildinfo
+.codeforge/history/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,71 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "apps/desktop/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+authors = ["CodeForge Engine contributors"]
+repository = "https://github.com/styayur/codeforge-engine"
+homepage = "https://github.com/styayur/codeforge-engine"
+keywords = ["rust", "static-analysis", "refactoring", "ast", "developer-tools"]
+categories = ["development-tools", "development-tools::build-utils"]
+description = "Local-first, verification-driven, language-aware code transformation runtime"
+
+[workspace.dependencies]
+codeforge-benchmark = { path = "crates/codeforge-benchmark" }
+codeforge-core = { path = "crates/codeforge-core" }
+codeforge-diagnostics = { path = "crates/codeforge-diagnostics" }
+codeforge-engines = { path = "crates/codeforge-engines" }
+codeforge-git = { path = "crates/codeforge-git" }
+codeforge-plugin = { path = "crates/codeforge-plugin" }
+codeforge-protocol = { path = "crates/codeforge-protocol" }
+codeforge-scheduler = { path = "crates/codeforge-scheduler" }
+codeforge-transform = { path = "crates/codeforge-transform" }
+codeforge-verification = { path = "crates/codeforge-verification" }
+codeforge-workspace = { path = "crates/codeforge-workspace" }
+
+anyhow = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+criterion = { version = "0.7", features = ["html_reports"] }
+ignore = "0.4"
+regex = "1.11"
+semver = "1.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+sha2 = "0.10"
+similar = "2.7"
+tempfile = "3.20"
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+walkdir = "2.5"
+
+tree-sitter = "0.25.10"
+tree-sitter-c = "0.24.2"
+tree-sitter-go = "0.25.0"
+tree-sitter-java = "0.23.5"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-python = "0.25.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
+
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[profile.dev.package."*"]
+opt-level = 1

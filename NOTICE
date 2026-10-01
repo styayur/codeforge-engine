@@ -1,0 +1,8 @@
+CodeForge Engine
+Copyright 2026 CodeForge Engine contributors
+
+This product includes software developed by the Rust, Tauri, Tree-sitter,
+Serde, Tokio, tracing, and related open-source communities.
+
+Optional external tools are discovered from the user's machine and are not
+bundled, relicensed, or redistributed by CodeForge Engine.

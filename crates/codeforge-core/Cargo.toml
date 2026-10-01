@@ -1,0 +1,35 @@
+[package]
+name = "codeforge-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+
+[dependencies]
+codeforge-benchmark.workspace = true
+codeforge-diagnostics.workspace = true
+codeforge-engines.workspace = true
+codeforge-git.workspace = true
+codeforge-plugin.workspace = true
+codeforge-protocol.workspace = true
+codeforge-scheduler.workspace = true
+codeforge-transform.workspace = true
+codeforge-verification.workspace = true
+codeforge-workspace.workspace = true
+async-trait.workspace = true
+ignore.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "runtime"
+harness = false
