@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-01",
+  "platform": "Windows",
+  "toolchain": "stable-x86_64-pc-windows-gnu / rustc 1.98.1",
+  "profile": "release",
+  "command": "cargo bench -p codeforge-core --bench runtime -- --sample-size 10 --measurement-time 1 --warm-up-time 1 --noplot",
+  "notes": "Local development benchmark. Short sample window; rerun on target release hardware before publishing performance claims.",
+  "benchmarks": [
+    {
+      "name": "startup_open_workspace",
+      "median_ms": 3.1402,
+      "confidence_interval_ms": [
+        3.0343,
+        3.2656
+      ],
+      "samples": 10
+    },
+    {
+      "name": "repository_index_1k_files",
+      "median_ms": 196.59,
+      "confidence_interval_ms": [
+        190.07,
+        204.71
+      ],
+      "samples": 10
+    },
+    {
+      "name": "single_file_tree_sitter_analysis",
+      "median_ms": 0.023573,
+      "confidence_interval_ms": [
+        0.023262,
+        0.023885
+      ],
+      "samples": 10
+    },
+    {
+      "name": "incremental_review_cached_workspace",
+      "median_ms": 0.48188,
+      "confidence_interval_ms": [
+        0.43936,
+        0.5484
+      ],
+      "samples": 10
+    },
+    {
+      "name": "ast_search_go_fixture",
+      "median_ms": 0.1241,
+      "confidence_interval_ms": [
+        0.11881,
+        0.12903
+      ],
+      "samples": 10
+    },
+    {
+      "name": "diagnostic_aggregation_2k",
+      "median_ms": 3.7339,
+      "confidence_interval_ms": [
+        3.6114,
+        3.9582
+      ],
+      "samples": 10
+    }
+  ]
+}
