@@ -1,0 +1,11 @@
+id = "c-clang-tidy"
+name = "clang-tidy"
+version = "0.1.0"
+kind = "local_executable"
+languages = ["c"]
+capabilities = ["lint", "fix", "refactor"]
+executable = "clang-tidy"
+dependencies = ["clang"]
+timeout_ms = 300000
+permissions = ["read_workspace", "execute_process"]
+description = "Optional C analysis backend. Alive2 remains a separate optional verifier."

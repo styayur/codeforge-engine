@@ -1,0 +1,11 @@
+id = "python-ruff"
+name = "Ruff"
+version = "0.1.0"
+kind = "local_executable"
+languages = ["python"]
+capabilities = ["lint", "format", "fix"]
+executable = "ruff"
+dependencies = []
+timeout_ms = 30000
+permissions = ["read_workspace", "execute_process"]
+description = "Optional fast Python linter and formatter discovered from the local PATH."

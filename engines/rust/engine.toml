@@ -1,0 +1,11 @@
+id = "rust-clippy"
+name = "Clippy"
+version = "0.1.0"
+kind = "local_executable"
+languages = ["rust"]
+capabilities = ["lint", "fix"]
+executable = "cargo-clippy"
+dependencies = ["cargo"]
+timeout_ms = 300000
+permissions = ["read_workspace", "execute_process"]
+description = "Runs through the installed Rust toolchain; unstable compiler internals are not part of the adapter contract."

@@ -1,0 +1,11 @@
+id = "java-openrewrite"
+name = "Java Worker / OpenRewrite"
+version = "0.1.0"
+kind = "external_worker"
+languages = ["java"]
+capabilities = ["verify", "refactor", "benchmark"]
+executable = "mvn"
+dependencies = ["java"]
+timeout_ms = 600000
+permissions = ["read_workspace", "write_workspace", "execute_process"]
+description = "JVM work is delegated through worker processes so it never blocks desktop or hot-path analysis."

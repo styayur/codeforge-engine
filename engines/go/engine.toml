@@ -1,0 +1,11 @@
+id = "go-staticcheck"
+name = "Staticcheck"
+version = "0.1.0"
+kind = "local_executable"
+languages = ["go"]
+capabilities = ["lint"]
+executable = "staticcheck"
+dependencies = ["go"]
+timeout_ms = 180000
+permissions = ["read_workspace", "execute_process"]
+description = "Optional Go lint backend discovered locally."
