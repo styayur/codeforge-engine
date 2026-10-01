@@ -56,7 +56,7 @@ jobs:
         run: pnpm tauri build ${{ matrix.tauri_args }}
 
       - name: Upload bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codeforge-${{ matrix.name }}
           path: ${{ matrix.artifact_glob }}
