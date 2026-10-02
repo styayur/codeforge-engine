@@ -36,10 +36,18 @@ pub enum Language {
     TypeScript,
     Java,
     Go,
+    Dart,
+    PowerShell,
+    Markdown,
+    Json,
+    Yaml,
+    Toml,
+    Html,
+    Css,
 }
 
 impl Language {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 15] = [
         Self::Python,
         Self::Rust,
         Self::C,
@@ -47,6 +55,14 @@ impl Language {
         Self::TypeScript,
         Self::Java,
         Self::Go,
+        Self::Dart,
+        Self::PowerShell,
+        Self::Markdown,
+        Self::Json,
+        Self::Yaml,
+        Self::Toml,
+        Self::Html,
+        Self::Css,
     ];
 
     pub fn from_extension(extension: &str) -> Option<Self> {
@@ -62,6 +78,14 @@ impl Language {
             "ts" | "tsx" | "mts" | "cts" => Some(Self::TypeScript),
             "java" => Some(Self::Java),
             "go" => Some(Self::Go),
+            "dart" => Some(Self::Dart),
+            "ps1" | "psm1" | "psd1" => Some(Self::PowerShell),
+            "md" | "markdown" => Some(Self::Markdown),
+            "json" | "jsonc" => Some(Self::Json),
+            "yaml" | "yml" => Some(Self::Yaml),
+            "toml" => Some(Self::Toml),
+            "html" | "htm" => Some(Self::Html),
+            "css" | "scss" => Some(Self::Css),
             _ => None,
         }
     }
@@ -75,6 +99,14 @@ impl Language {
             "typescript" | "ts" | "tsx" => Ok(Self::TypeScript),
             "java" => Ok(Self::Java),
             "go" | "golang" => Ok(Self::Go),
+            "dart" | "flutter" => Ok(Self::Dart),
+            "powershell" | "pwsh" | "ps" => Ok(Self::PowerShell),
+            "markdown" | "md" => Ok(Self::Markdown),
+            "json" | "jsonc" => Ok(Self::Json),
+            "yaml" | "yml" => Ok(Self::Yaml),
+            "toml" => Ok(Self::Toml),
+            "html" => Ok(Self::Html),
+            "css" => Ok(Self::Css),
             other => Err(ProtocolError::UnsupportedLanguage(other.to_owned())),
         }
     }
@@ -88,6 +120,14 @@ impl Language {
             Self::TypeScript => "typescript",
             Self::Java => "java",
             Self::Go => "go",
+            Self::Dart => "dart",
+            Self::PowerShell => "powershell",
+            Self::Markdown => "markdown",
+            Self::Json => "json",
+            Self::Yaml => "yaml",
+            Self::Toml => "toml",
+            Self::Html => "html",
+            Self::Css => "css",
         }
     }
 
@@ -100,6 +140,14 @@ impl Language {
             Self::TypeScript => "TypeScript",
             Self::Java => "Java",
             Self::Go => "Go",
+            Self::Dart => "Dart / Flutter",
+            Self::PowerShell => "PowerShell",
+            Self::Markdown => "Markdown",
+            Self::Json => "JSON",
+            Self::Yaml => "YAML",
+            Self::Toml => "TOML",
+            Self::Html => "HTML",
+            Self::Css => "CSS",
         }
     }
 
@@ -112,7 +160,30 @@ impl Language {
             Self::TypeScript => "**/*.{ts,tsx,mts,cts}",
             Self::Java => "**/*.java",
             Self::Go => "**/*.go",
+            Self::Dart => "**/*.dart",
+            Self::PowerShell => "**/*.{ps1,psm1,psd1}",
+            Self::Markdown => "**/*.{md,markdown}",
+            Self::Json => "**/*.{json,jsonc}",
+            Self::Yaml => "**/*.{yaml,yml}",
+            Self::Toml => "**/*.toml",
+            Self::Html => "**/*.{html,htm}",
+            Self::Css => "**/*.{css,scss}",
         }
+    }
+
+    pub const fn is_code(self) -> bool {
+        matches!(
+            self,
+            Self::Python
+                | Self::Rust
+                | Self::C
+                | Self::JavaScript
+                | Self::TypeScript
+                | Self::Java
+                | Self::Go
+                | Self::Dart
+                | Self::PowerShell
+        )
     }
 }
 
@@ -165,12 +236,79 @@ pub enum Confidence {
     High,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
     Low,
     Medium,
     High,
+    VeryHigh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TransformationClass {
+    #[default]
+    StyleOnly,
+    SafeAstFix,
+    DeadCode,
+    ComplexityReduction,
+    ApiRefactor,
+    PerformanceCandidate,
+    ArchitectureChange,
+    DependencyUpdate,
+}
+
+impl TransformationClass {
+    pub const fn default_risk(self) -> RiskLevel {
+        match self {
+            Self::StyleOnly | Self::SafeAstFix => RiskLevel::Low,
+            Self::DeadCode | Self::ComplexityReduction => RiskLevel::Medium,
+            Self::ApiRefactor | Self::PerformanceCandidate => RiskLevel::High,
+            Self::ArchitectureChange => RiskLevel::VeryHigh,
+            Self::DependencyUpdate => RiskLevel::VeryHigh,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StyleOnly => "STYLE_ONLY",
+            Self::SafeAstFix => "SAFE_AST_FIX",
+            Self::DeadCode => "DEAD_CODE",
+            Self::ComplexityReduction => "COMPLEXITY_REDUCTION",
+            Self::ApiRefactor => "API_REFACTOR",
+            Self::PerformanceCandidate => "PERFORMANCE_CANDIDATE",
+            Self::ArchitectureChange => "ARCHITECTURE_CHANGE",
+            Self::DependencyUpdate => "DEPENDENCY_UPDATE",
+        }
+    }
+
+    pub const fn is_permitted_by(self, risk: RiskLevel) -> bool {
+        matches!(
+            (risk, self),
+            (RiskLevel::Low, Self::StyleOnly | Self::SafeAstFix)
+                | (
+                    RiskLevel::Medium,
+                    Self::StyleOnly | Self::SafeAstFix | Self::DeadCode | Self::ComplexityReduction
+                )
+                | (
+                    RiskLevel::High,
+                    Self::StyleOnly
+                        | Self::SafeAstFix
+                        | Self::DeadCode
+                        | Self::ComplexityReduction
+                        | Self::ApiRefactor
+                        | Self::PerformanceCandidate
+                )
+                | (RiskLevel::VeryHigh, _)
+        )
+    }
+}
+
+impl fmt::Display for TransformationClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +422,12 @@ pub struct Diagnostic {
     pub fixes: Vec<Fix>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transformation_class: Option<TransformationClass>,
+    #[serde(default)]
+    pub safe_fix_available: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<String>,
 }
 
 impl Diagnostic {
@@ -314,11 +458,25 @@ impl Diagnostic {
             source: None,
             fixes: Vec::new(),
             tags: Vec::new(),
+            transformation_class: None,
+            safe_fix_available: false,
+            evidence: Vec::new(),
         }
     }
 
     pub fn with_fix(mut self, fix: Fix) -> Self {
+        self.safe_fix_available |= fix.safe;
         self.fixes.push(fix);
+        self
+    }
+
+    pub fn with_transformation_class(mut self, class: TransformationClass) -> Self {
+        self.transformation_class = Some(class);
+        self
+    }
+
+    pub fn with_evidence(mut self, evidence: impl Into<String>) -> Self {
+        self.evidence.push(evidence.into());
         self
     }
 
@@ -357,6 +515,8 @@ pub struct Transformation {
     #[serde(default)]
     pub preconditions: Vec<String>,
     pub risk_level: RiskLevel,
+    #[serde(default)]
+    pub transformation_class: TransformationClass,
     pub reversible: bool,
 }
 
@@ -379,8 +539,15 @@ impl Transformation {
             edits,
             preconditions: Vec::new(),
             risk_level: RiskLevel::Low,
+            transformation_class: TransformationClass::StyleOnly,
             reversible: true,
         }
+    }
+
+    pub fn with_class(mut self, class: TransformationClass) -> Self {
+        self.transformation_class = class;
+        self.risk_level = class.default_risk();
+        self
     }
 }
 
@@ -502,6 +669,8 @@ impl VerificationResult {
             EvidenceLevel::Verified
         } else if self.tests.status == VerificationStatus::Passed {
             EvidenceLevel::Tested
+        } else if self.benchmark.status == VerificationStatus::Passed {
+            EvidenceLevel::Benchmarked
         } else if self.build.status == VerificationStatus::Passed {
             EvidenceLevel::Compiled
         } else if self.syntax.status == VerificationStatus::Passed {
@@ -512,9 +681,54 @@ impl VerificationResult {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerificationEvidence {
+    pub syntax: VerificationStatus,
+    pub compiled: VerificationStatus,
+    pub tested: VerificationStatus,
+    pub benchmarked: VerificationStatus,
+    pub equivalence: VerificationStatus,
+}
+
+impl VerificationEvidence {
+    pub fn from_result(result: &VerificationResult) -> Self {
+        Self {
+            syntax: result.syntax.status,
+            compiled: result.build.status,
+            tested: result.tests.status,
+            benchmarked: result.benchmark.status,
+            equivalence: result.equivalence.status,
+        }
+    }
+
+    pub fn levels(&self) -> Vec<EvidenceLevel> {
+        let mut levels = Vec::new();
+        if self.equivalence == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Verified);
+        }
+        if self.tested == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Tested);
+        }
+        if self.benchmarked == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Benchmarked);
+        }
+        if self.compiled == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Compiled);
+        }
+        if self.syntax == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Heuristic);
+        }
+        if levels.is_empty() {
+            levels.push(EvidenceLevel::Unverified);
+        }
+        levels
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EvidenceLevel {
+    Benchmarked,
     Verified,
     Tested,
     Compiled,
@@ -529,6 +743,8 @@ pub struct TimingSummary {
     pub mean: f64,
     pub median: f64,
     pub variance: f64,
+    #[serde(default)]
+    pub stddev: f64,
     pub min: f64,
     pub max: f64,
 }
@@ -566,6 +782,7 @@ impl TimingSummary {
             mean,
             median,
             variance,
+            stddev: variance.sqrt(),
         }
     }
 }
@@ -576,13 +793,33 @@ pub struct BenchmarkResult {
     pub before: TimingSummary,
     pub after: TimingSummary,
     pub delta_percent: f64,
+    #[serde(default = "default_warmup")]
+    pub warmup: usize,
+    #[serde(default = "default_sample_count")]
+    pub samples: usize,
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
     pub environment: BTreeMap<String, String>,
+    #[serde(default = "default_timestamp")]
+    pub timestamp: DateTime<Utc>,
 }
 
 impl BenchmarkResult {
     pub fn has_real_measurements(&self) -> bool {
         !self.before.samples.is_empty() && !self.after.samples.is_empty()
     }
+}
+
+const fn default_warmup() -> usize {
+    1
+}
+
+const fn default_sample_count() -> usize {
+    5
+}
+
+fn default_timestamp() -> DateTime<Utc> {
+    Utc::now()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -691,6 +928,161 @@ pub struct WorkspaceSummary {
     pub git_repository: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCapability {
+    pub parse: bool,
+    pub format: bool,
+    pub lint: bool,
+    pub fix: bool,
+    pub verify: bool,
+    pub benchmark: bool,
+    pub profile: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetectedProjectProfile {
+    pub ecosystem: String,
+    pub languages: Vec<Language>,
+    pub markers: Vec<String>,
+    pub confidence: Confidence,
+    #[serde(default)]
+    pub suggested_commands: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProfile {
+    pub root: PathBuf,
+    pub name: String,
+    pub ecosystems: Vec<DetectedProjectProfile>,
+    pub languages: Vec<Language>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolAdapterDescriptor {
+    pub id: String,
+    pub name: String,
+    pub languages: Vec<Language>,
+    pub capabilities: ToolCapability,
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidenceBundle {
+    pub id: String,
+    pub repository: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    pub risk: RiskLevel,
+    #[serde(default)]
+    pub transformation_classes: Vec<TransformationClass>,
+    pub baseline: VerificationResult,
+    pub after: VerificationResult,
+    pub evidence: VerificationEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<BenchmarkResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<Patch>,
+    pub report_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FleetRunStatus {
+    Success,
+    PartialSuccess,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepoRunStatus {
+    Success,
+    PartialSuccess,
+    Findings,
+    VerificationFailure,
+    MissingTool,
+    ConfigurationFailure,
+    TransformationFailure,
+    SafetyRefusal,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoRunSummary {
+    pub repository: String,
+    pub path: PathBuf,
+    pub status: RepoRunStatus,
+    pub languages: Vec<Language>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_profile: Option<ProjectProfile>,
+    #[serde(default)]
+    pub findings: usize,
+    #[serde(default)]
+    pub pending_transformations: usize,
+    pub risk: RiskLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<VerificationResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<EvidenceBundle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<PathBuf>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetRunSummary {
+    pub run_id: String,
+    pub fleet_name: String,
+    pub status: FleetRunStatus,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: DateTime<Utc>,
+    pub repositories: Vec<RepoRunSummary>,
+    pub report_dir: PathBuf,
+}
+
+impl FleetRunSummary {
+    pub fn from_repositories(
+        run_id: impl Into<String>,
+        fleet_name: impl Into<String>,
+        started_at: DateTime<Utc>,
+        report_dir: PathBuf,
+        repositories: Vec<RepoRunSummary>,
+    ) -> Self {
+        let status = if repositories
+            .iter()
+            .all(|repository| repository.status == RepoRunStatus::Success)
+        {
+            FleetRunStatus::Success
+        } else if repositories.iter().any(|repository| {
+            matches!(
+                repository.status,
+                RepoRunStatus::Success | RepoRunStatus::Findings | RepoRunStatus::PartialSuccess
+            )
+        }) {
+            FleetRunStatus::PartialSuccess
+        } else {
+            FleetRunStatus::Failed
+        };
+        Self {
+            run_id: run_id.into(),
+            fleet_name: fleet_name.into(),
+            status,
+            started_at,
+            finished_at: Utc::now(),
+            repositories,
+            report_dir,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -900,6 +1292,29 @@ pub fn diagnostics_to_sarif(diagnostics: &[Diagnostic]) -> SarifLog {
                     .collect(),
             ),
         );
+        properties.insert(
+            "safeFixAvailable".to_owned(),
+            serde_json::Value::Bool(diagnostic.safe_fix_available),
+        );
+        if let Some(class) = diagnostic.transformation_class {
+            properties.insert(
+                "transformationClass".to_owned(),
+                serde_json::Value::String(class.to_string()),
+            );
+        }
+        if !diagnostic.evidence.is_empty() {
+            properties.insert(
+                "evidence".to_owned(),
+                serde_json::Value::Array(
+                    diagnostic
+                        .evidence
+                        .iter()
+                        .cloned()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
+        }
 
         results.push(SarifResult {
             rule_id: diagnostic.rule_id.clone(),
