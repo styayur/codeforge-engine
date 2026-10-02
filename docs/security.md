@@ -27,6 +27,13 @@ explicitly and only through the locally installed `gh` CLI. Reports redact
 secret values and sanitize benchmark environment metadata; secrets and machine
 identifiers are never written to evidence bundles.
 
+## AI boundary
+
+AI is disabled by default. If enabled for proposal generation in a future
+release, AI output is untrusted input: it may propose a transformation but
+cannot bypass the parser, diff, verification, transaction, or policy boundary.
+AI is optional proposal generation, not the trust boundary.
+
 ## Plugin permissions
 
 Plugins must declare permissions. Bundled and dynamic adapters are denied network permission by default and cannot edit workspace files unless the manifest and host policy allow it.

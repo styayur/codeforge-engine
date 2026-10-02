@@ -232,6 +232,15 @@ cargo bench -p codeforge-fleet --bench fleet
 
 Do not publish claims such as “10x faster” without measured data in [benchmarks/results](benchmarks/results).
 
+## AI boundary
+
+AI is disabled by default. If an optional AI provider is added later, it may
+only propose transformations. It cannot bypass the parser, diff, verification,
+transaction, or policy boundaries. AI is optional proposal generation, not the
+trust boundary.
+
+See [rule-ids.md](docs/rule-ids.md) for the stable rule namespace.
+
 ## License
 
 Apache-2.0. Third-party tools are locally discovered and are not relicensed or redistributed by this project. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
