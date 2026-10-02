@@ -19,6 +19,14 @@ External tools are executed without a shell:
 
 The runtime applies timeout, controlled environment, bounded output, and explicit executable paths. `shell=true`-style command construction is not supported.
 
+## Fleet mode
+
+Fleet runs are local-only. Source snippets, diagnostics, and reports are not
+uploaded by CodeForge. A GitHub PR is created only when `--open-pr` is passed
+explicitly and only through the locally installed `gh` CLI. Reports redact
+secret values and sanitize benchmark environment metadata; secrets and machine
+identifiers are never written to evidence bundles.
+
 ## Plugin permissions
 
 Plugins must declare permissions. Bundled and dynamic adapters are denied network permission by default and cannot edit workspace files unless the manifest and host policy allow it.
