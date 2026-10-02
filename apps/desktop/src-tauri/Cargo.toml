@@ -15,6 +15,7 @@ tauri-build.workspace = true
 
 [dependencies]
 codeforge-core.workspace = true
+codeforge-fleet.workspace = true
 codeforge-protocol.workspace = true
 codeforge-transform.workspace = true
 serde.workspace = true

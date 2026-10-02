@@ -1,0 +1,34 @@
+[fleet]
+name = "codeforge-self-host"
+workspace_root = ".."
+repositories = ["codeforge-engine"]
+exclude = []
+
+[policy]
+require_clean_tree = true
+one_repository_per_transaction = true
+one_repository_per_pr = true
+rollback_on_failure = true
+max_changed_files = 40
+max_changed_lines = 2500
+require_tests = true
+require_build = true
+branch_prefix = "codeforge/"
+
+[policy.protected_paths]
+patterns = [
+  "LICENSE*",
+  "THIRD_PARTY*",
+  "NOTICE*",
+  "SECURITY*",
+  "Cargo.lock",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "vendor/**",
+  "generated/**",
+  "dist/**",
+  "build/**",
+  "target/**",
+  "node_modules/**",
+]

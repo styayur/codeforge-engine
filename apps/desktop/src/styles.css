@@ -220,3 +220,144 @@ html[data-theme="light"] .button.primary { color: #ffffff; background: linear-gr
 html[data-theme="light"] .button.secondary { background: #f4f7f9; }
 html[data-theme="light"] .monaco-editor,
 html[data-theme="light"] .monaco-editor-background { background-color: #ffffff; }
+
+.fleet-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+
+.fleet-toolbar code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fleet-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.fleet-repositories {
+  padding: 14px;
+}
+
+.fleet-repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.fleet-repo {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fleet-repo.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.fleet-repo small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.repo-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.repo-status-dot[data-status="success"] { background: #48a868; }
+.repo-status-dot[data-status="findings"],
+.repo-status-dot[data-status="partial_success"] { background: #d8a33a; }
+.repo-status-dot[data-status="verification_failure"],
+.repo-status-dot[data-status="transformation_failure"],
+.repo-status-dot[data-status="configuration_failure"] { background: #d05252; }
+.repo-status-dot[data-status="missing_tool"],
+.repo-status-dot[data-status="safety_refusal"] { background: #a477d6; }
+
+.repo-metrics {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fleet-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.fleet-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.metric span,
+.metric strong {
+  display: block;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.metric strong {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.report-path {
+  display: block;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+.patch-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+@media (max-width: 1100px) {
+  .fleet-layout { grid-template-columns: 1fr; }
+  .fleet-toolbar { grid-template-columns: 1fr; }
+  .fleet-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

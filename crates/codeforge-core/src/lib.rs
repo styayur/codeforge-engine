@@ -29,6 +29,7 @@ pub use ai::{
     AiError, AiExplanation, AiPolicy, AiProvider, AiTransformProposal, DisabledAiProvider,
 };
 pub use config::{CodeForgeConfig, CommandConfig};
+pub use sandbox::{Sandbox, SandboxError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -702,6 +703,35 @@ impl CodeForgeEngine {
                         ));
                     }
                 }
+                Language::Dart => {
+                    if let Some(dart) = find_executable("dart") {
+                        plan.typecheck = Some(CommandSpec::new(dart, ["analyze"], root));
+                    }
+                    if let Some(flutter) = find_executable("flutter") {
+                        plan.tests = Some(CommandSpec::new(flutter, ["test"], root));
+                    }
+                }
+                Language::PowerShell => {
+                    if let Some(pwsh) = find_executable("pwsh") {
+                        let script = "[void][System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$null,[ref]$errors); if($errors.Count){ exit 1 }";
+                        plan.syntax = Some(CommandSpec::new(
+                            pwsh.clone(),
+                            ["-NoProfile", "-NonInteractive", "-Command", script],
+                            root,
+                        ));
+                        plan.tests = Some(CommandSpec::new(
+                            pwsh,
+                            ["-NoProfile", "-NonInteractive", "-Command", "Invoke-Pester"],
+                            root,
+                        ));
+                    }
+                }
+                Language::Markdown
+                | Language::Json
+                | Language::Yaml
+                | Language::Toml
+                | Language::Html
+                | Language::Css => {}
             }
         }
         plan

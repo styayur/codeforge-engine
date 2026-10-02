@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   Boxes,
@@ -11,6 +11,7 @@ import {
   History,
   Languages,
   ListChecks,
+  Network,
   RefreshCw,
   RotateCcw,
   SearchCode,
@@ -25,6 +26,8 @@ import { VerificationPill } from "./components/StatusPill";
 import { useAppStore } from "./store";
 import type {
   Diagnostic,
+  FleetRunSummary,
+  RepoRunSummary,
   Theme,
   OptimizationReport,
   VerificationResult,
@@ -34,6 +37,7 @@ import type {
 
 const navItems: Array<{ id: View; label: string; icon: typeof Boxes }> = [
   { id: "workspace", label: "Workspace", icon: Boxes },
+  { id: "fleet", label: "Fleet", icon: Network },
   { id: "review", label: "Review", icon: FileSearch },
   { id: "refactor", label: "Refactor", icon: Wrench },
   { id: "optimize", label: "Optimize", icon: Sparkles },
@@ -98,6 +102,15 @@ export default function App() {
         )}
         <div className="workspace-content">
           {store.view === "workspace" && <WorkspaceView summary={store.workspace} />}
+          {store.view === "fleet" && (
+            <FleetView
+              summary={store.fleet}
+              configPath={store.fleetConfigPath}
+              loading={store.loading}
+              onChooseConfig={store.chooseFleetConfig}
+              onRun={store.runFleet}
+            />
+          )}
           {store.view === "review" && (
             <ReviewView
               diagnostics={store.diagnostics}
@@ -203,6 +216,122 @@ function WorkspaceView({ summary }: { summary?: WorkspaceSummary }) {
       </div>
     </section>
   );
+}
+
+function FleetView({
+  summary,
+  configPath,
+  loading,
+  onChooseConfig,
+  onRun
+}: {
+  summary?: FleetRunSummary;
+  configPath?: string;
+  loading: boolean;
+  onChooseConfig: () => Promise<void>;
+  onRun: (command: string) => Promise<void>;
+}) {
+  const [selectedName, setSelectedName] = useState<string>();
+  const selected = summary?.repositories.find((repository) => repository.repository === selectedName)
+    ?? summary?.repositories[0];
+  const actions = ["audit", "beautify", "review", "refactor", "optimize", "verify"];
+  return (
+    <section className="page fleet-page">
+      <PageHeading
+        eyebrow="Fleet"
+        title={summary?.fleet_name ?? "Repository fleet"}
+        description="Independent repository transactions, policy checks, and evidence reports. Desktop actions are preview-only."
+      />
+      <div className="fleet-toolbar surface">
+        <button className="button secondary" onClick={() => void onChooseConfig()} disabled={loading}>
+          <FolderOpen size={15} /> Choose fleet.toml
+        </button>
+        <code>{configPath ?? "No fleet configuration selected"}</code>
+        <div className="fleet-actions">
+          {actions.map((action) => (
+            <button
+              key={action}
+              className={action === "audit" ? "button primary" : "button secondary"}
+              onClick={() => void onRun(action)}
+              disabled={loading || !configPath}
+            >
+              {action}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!summary ? (
+        <EmptyState title="No fleet run" text="Choose fleet.toml, then run a read-only audit, review, or preview." />
+      ) : (
+        <div className="fleet-layout">
+          <div className="fleet-repositories surface">
+            <header className="section-heading">
+              <Network size={17} />
+              <h2>Repositories</h2>
+              <span className="muted">{summary.status}</span>
+            </header>
+            <div className="fleet-repo-list">
+              {summary.repositories.map((repository) => (
+                <button
+                  key={repository.repository}
+                  className={selected?.repository === repository.repository ? "fleet-repo active" : "fleet-repo"}
+                  onClick={() => setSelectedName(repository.repository)}
+                >
+                  <span className="repo-status-dot" data-status={repository.status} />
+                  <span>
+                    <strong>{repository.repository}</strong>
+                    <small>{repository.languages.join(", ") || "no source languages"}</small>
+                  </span>
+                  <span className="repo-metrics">{repository.findings} findings</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="fleet-detail">
+            {selected && <FleetRepositoryDetail repository={selected} />}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FleetRepositoryDetail({ repository }: { repository: RepoRunSummary }) {
+  const verification = repository.verification;
+  return (
+    <>
+      <div className="surface compact">
+        <header className="section-heading"><SearchCode size={17} /><h2>{repository.repository}</h2></header>
+        <div className="fleet-summary-grid">
+          <Metric label="Status" value={repository.status} />
+          <Metric label="Risk" value={repository.risk} />
+          <Metric label="Findings" value={String(repository.findings)} />
+          <Metric label="Pending" value={String(repository.pending_transformations)} />
+        </div>
+        <p className="muted">{repository.message}</p>
+        {repository.report_path && <code className="report-path">{repository.report_path}</code>}
+      </div>
+      <div className="surface">
+        <header className="section-heading"><ListChecks size={17} /><h2>Verification</h2></header>
+        {verification ? <VerificationStrip result={verification} /> : <p className="muted">No verification run for this repository operation.</p>}
+      </div>
+      {repository.evidence?.benchmark && <BenchmarkBlock result={repository.evidence.benchmark} />}
+      {repository.evidence?.patch && (
+        <div className="surface compact">
+          <header className="section-heading"><FileSearch size={17} /><h2>Preview</h2></header>
+          <p className="muted">{repository.evidence.patch.files.length} files, {repository.evidence.patch.additions} additions, {repository.evidence.patch.deletions} deletions.</p>
+          <div className="patch-file-list">
+            {repository.evidence.patch.files.map((file) => <code key={file.file}>{file.file}</code>)}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function ReviewView({

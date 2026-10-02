@@ -2,7 +2,7 @@ use std::path::Path;
 
 use codeforge_protocol::{
     Confidence, Diagnostic, DiagnosticCategory, Fix, Language, RiskLevel, Severity, SourceRange,
-    TextEdit, Transformation,
+    TextEdit, Transformation, TransformationClass,
 };
 use tree_sitter::Node;
 
@@ -34,6 +34,12 @@ pub fn analyze_source(
     path: &Path,
     source: &str,
 ) -> Vec<Diagnostic> {
+    if !language_id.is_code() {
+        return analyze_text_source(engine, language_id, path, source)
+            .into_iter()
+            .map(|finding| finding_to_diagnostic(engine, language_id, path, source, finding))
+            .collect();
+    }
     let tree = match language::parse(language_id, path, source) {
         Ok(tree) => tree,
         Err(error) => {
@@ -55,6 +61,7 @@ pub fn analyze_source(
 
     let mut findings = Vec::new();
     collect_tree_findings(language_id, source, tree.root_node(), &mut findings);
+    findings.extend(text_findings(language_id, source));
     findings
         .into_iter()
         .take(250)
@@ -103,6 +110,7 @@ fn finding_to_diagnostic(
 ) -> Diagnostic {
     let range = SourceRange::from_offsets(source, finding.start_byte, finding.end_byte)
         .unwrap_or_else(|_| SourceRange::new(0, 0, 1, 1, 1, 1).expect("empty range"));
+    let transformation_class = class_for_rule(&finding.rule_id, finding.category);
     let mut diagnostic = Diagnostic::new(
         engine,
         language,
@@ -114,7 +122,8 @@ fn finding_to_diagnostic(
         range.clone(),
         finding.message,
     )
-    .with_explanation(finding.explanation);
+    .with_explanation(finding.explanation)
+    .with_transformation_class(transformation_class);
     if let Some(fix) = finding.fix {
         diagnostic = diagnostic.with_fix(Fix::new(
             fix.title,
@@ -175,6 +184,301 @@ fn rule_for_node(language: Language, source: &str, node: Node<'_>) -> Option<Fin
         Language::JavaScript | Language::TypeScript => javascript_rule(source, node),
         Language::Java => java_rule(source, node),
         Language::Go => go_rule(source, node),
+        Language::Dart | Language::PowerShell => None,
+        Language::Markdown
+        | Language::Json
+        | Language::Yaml
+        | Language::Toml
+        | Language::Html
+        | Language::Css => None,
+    }
+}
+
+fn analyze_text_source(
+    _engine: &str,
+    language: Language,
+    path: &Path,
+    source: &str,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    match language {
+        Language::Markdown => {
+            for (start, link) in markdown_links(source) {
+                if is_remote_link(&link) || link.starts_with('#') {
+                    continue;
+                }
+                let target = link.split('#').next().unwrap_or(&link);
+                if target.is_empty() {
+                    continue;
+                }
+                let candidate = path.parent().unwrap_or_else(|| Path::new(".")).join(target);
+                if !candidate.exists() {
+                    findings.push(text_finding(
+                        "CF-MD-001",
+                        Severity::Warning,
+                        DiagnosticCategory::Correctness,
+                        Confidence::High,
+                        format!("Broken relative reference: {link}"),
+                        "The Markdown target is not present in the workspace.",
+                        source,
+                        start,
+                        start + link.len(),
+                    ));
+                }
+            }
+        }
+        Language::Json => {
+            if let Err(error) = serde_json::from_str::<serde_json::Value>(source) {
+                findings.push(text_finding(
+                    "CF-JSON-001",
+                    Severity::Error,
+                    DiagnosticCategory::Correctness,
+                    Confidence::High,
+                    format!("Invalid JSON: {error}"),
+                    "JSON configuration must parse before tools consume it.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
+            }
+        }
+        Language::Yaml => {
+            if source.lines().any(|line| line.contains('\t')) {
+                findings.push(text_finding(
+                    "CF-YAML-001",
+                    Severity::Warning,
+                    DiagnosticCategory::Style,
+                    Confidence::High,
+                    "YAML indentation contains a tab",
+                    "YAML indentation should use spaces to avoid parser ambiguity.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
+            }
+        }
+        Language::Toml => {
+            let mut keys = std::collections::BTreeSet::new();
+            for line in source.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') || trimmed.starts_with('#') {
+                    continue;
+                }
+                if let Some((key, _)) = trimmed.split_once('=') {
+                    let key = key.trim();
+                    if !keys.insert(key.to_owned()) {
+                        let start = source.find(line).unwrap_or(0);
+                        findings.push(text_finding(
+                            "CF-TOML-001",
+                            Severity::Error,
+                            DiagnosticCategory::Correctness,
+                            Confidence::Medium,
+                            format!("Duplicate TOML key in this table: {key}"),
+                            "Duplicate keys can change tool configuration silently.",
+                            source,
+                            start,
+                            start + line.len(),
+                        ));
+                    }
+                }
+            }
+        }
+        Language::Html => {
+            if !source.to_ascii_lowercase().contains("<html") {
+                findings.push(text_finding(
+                    "CF-HTML-001",
+                    Severity::Info,
+                    DiagnosticCategory::Style,
+                    Confidence::Medium,
+                    "HTML document has no <html> root element",
+                    "Fragments are valid, but standalone documents should declare a root element.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
+            }
+        }
+        Language::Css => {
+            let opens = source.chars().filter(|character| *character == '{').count();
+            let closes = source.chars().filter(|character| *character == '}').count();
+            if opens != closes {
+                findings.push(text_finding(
+                    "CF-CSS-001",
+                    Severity::Error,
+                    DiagnosticCategory::Correctness,
+                    Confidence::High,
+                    format!("Unbalanced CSS braces: {opens} opening, {closes} closing"),
+                    "Unbalanced braces indicate a malformed stylesheet.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
+            }
+        }
+        _ => {}
+    }
+    findings
+}
+
+fn text_findings(language: Language, source: &str) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    match language {
+        Language::Dart => {
+            for (needle, rule_id, severity, category, message) in [
+                (
+                    "print(",
+                    "CF-DART-001",
+                    Severity::Info,
+                    DiagnosticCategory::Style,
+                    "Dart code uses print()",
+                ),
+                (
+                    "TODO",
+                    "CF-DART-002",
+                    Severity::Info,
+                    DiagnosticCategory::Maintainability,
+                    "Dart TODO marker",
+                ),
+                (
+                    "dynamic ",
+                    "CF-DART-003",
+                    Severity::Info,
+                    DiagnosticCategory::Maintainability,
+                    "Dart dynamic type hides static contracts",
+                ),
+            ] {
+                for start in source
+                    .match_indices(needle)
+                    .map(|(index, _)| index)
+                    .take(50)
+                {
+                    findings.push(text_finding(
+                        rule_id,
+                        severity,
+                        category,
+                        Confidence::Medium,
+                        message,
+                        "This heuristic is review-only in v0.2.",
+                        source,
+                        start,
+                        start + needle.len(),
+                    ));
+                }
+            }
+        }
+        Language::PowerShell => {
+            for (needle, rule_id, severity, category, message) in [
+                (
+                    "Invoke-Expression",
+                    "CF-PS-001",
+                    Severity::Warning,
+                    DiagnosticCategory::Security,
+                    "PowerShell uses Invoke-Expression",
+                ),
+                (
+                    "ConvertTo-SecureString",
+                    "CF-PS-002",
+                    Severity::Warning,
+                    DiagnosticCategory::Security,
+                    "PowerShell secure-string conversion requires review",
+                ),
+                (
+                    "Write-Host",
+                    "CF-PS-003",
+                    Severity::Info,
+                    DiagnosticCategory::Style,
+                    "PowerShell uses Write-Host",
+                ),
+            ] {
+                for start in source
+                    .match_indices(needle)
+                    .map(|(index, _)| index)
+                    .take(50)
+                {
+                    findings.push(text_finding(
+                        rule_id,
+                        severity,
+                        category,
+                        Confidence::Medium,
+                        message,
+                        "This heuristic is review-only in v0.2.",
+                        source,
+                        start,
+                        start + needle.len(),
+                    ));
+                }
+            }
+        }
+        _ => {}
+    }
+    findings
+}
+
+#[allow(clippy::too_many_arguments)]
+fn text_finding(
+    rule_id: &str,
+    severity: Severity,
+    category: DiagnosticCategory,
+    confidence: Confidence,
+    message: impl Into<String>,
+    explanation: impl Into<String>,
+    source: &str,
+    start: usize,
+    end: usize,
+) -> Finding {
+    Finding {
+        rule_id: rule_id.to_owned(),
+        severity,
+        category,
+        confidence,
+        message: message.into(),
+        explanation: explanation.into(),
+        start_byte: start.min(source.len()),
+        end_byte: end.min(source.len()).max(start.min(source.len())),
+        fix: None,
+    }
+}
+
+fn markdown_links(source: &str) -> Vec<(usize, String)> {
+    let mut links = Vec::new();
+    let mut remainder = source;
+    let mut offset = 0;
+    while let Some(open) = remainder.find("](") {
+        let link_start = open + 2;
+        let Some(close) = remainder[link_start..].find(')') else {
+            break;
+        };
+        let link = remainder[link_start..link_start + close].trim().to_owned();
+        links.push((offset + link_start, link));
+        offset += link_start + close + 1;
+        remainder = &remainder[link_start + close + 1..];
+    }
+    links
+}
+
+fn is_remote_link(link: &str) -> bool {
+    link.contains("://") || link.starts_with("mailto:")
+}
+
+fn class_for_rule(rule_id: &str, category: DiagnosticCategory) -> TransformationClass {
+    if rule_id.starts_with("CF-MD-")
+        || rule_id.starts_with("CF-JSON-")
+        || rule_id.starts_with("CF-YAML-")
+        || rule_id.starts_with("CF-TOML-")
+        || rule_id.starts_with("CF-HTML-")
+        || rule_id.starts_with("CF-CSS-")
+        || rule_id.starts_with("CF-DART-")
+        || rule_id.starts_with("CF-PS-")
+    {
+        return TransformationClass::SafeAstFix;
+    }
+    match category {
+        DiagnosticCategory::Style => TransformationClass::StyleOnly,
+        DiagnosticCategory::DeadCode => TransformationClass::DeadCode,
+        DiagnosticCategory::Complexity => TransformationClass::ComplexityReduction,
+        DiagnosticCategory::Performance => TransformationClass::PerformanceCandidate,
+        DiagnosticCategory::ApiMisuse => TransformationClass::ApiRefactor,
+        _ => TransformationClass::SafeAstFix,
     }
 }
 

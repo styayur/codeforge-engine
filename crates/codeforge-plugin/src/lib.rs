@@ -195,7 +195,7 @@ mod tests {
         let manifest = PluginManifest {
             id: "python-ruff".to_owned(),
             name: "Ruff".to_owned(),
-            version: "0.1.0".to_owned(),
+            version: "0.2.0".to_owned(),
             kind: PluginKind::LocalExecutable,
             languages: vec![Language::Python],
             capabilities: vec![Capability::Lint, Capability::Fix],

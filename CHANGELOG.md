@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.2.0 - 2026-10-02
+
+Verification-driven repository fleet refactoring preview.
+
+### Added
+
+- `codeforge fleet` orchestration with `audit`, `format`, `review`, `refactor`, `optimize`, `verify`, and `report`.
+- Stable `fleet.toml` configuration for repository selection, policy, protected paths, and branch naming.
+- `codeforge-fleet` crate for discovery, project detection, independent repository transactions, partial-success scheduling, and evidence generation.
+- Dart / Flutter and PowerShell adapters, plus Markdown, JSON, YAML, TOML, HTML, and CSS structural review.
+- Unified local tool adapter descriptions for rustfmt, clippy, Ruff, Biome, Prettier, ESLint, Oxlint, clang-format, clang-tidy, gofmt, gofumpt, Staticcheck, google-java-format, Spotless, Dart, Flutter, PSScriptAnalyzer, and markdownlint.
+- Transformation classes and risk policy: style-only, safe AST fix, dead code, complexity, API refactor, performance candidate, architecture change, and dependency update.
+- Evidence bundles with Markdown, JSON, SARIF, patch, before/after snapshots, verification dimensions, and benchmark metadata.
+- Read-only `codeforge ci` mode and a GitHub Actions example.
+- Fleet dashboard in the Tauri desktop workbench.
+
+### Safety
+
+- Preview-first fleet transformations with explicit `--apply` or `--open-pr`.
+- One repository per transaction and per pull request.
+- Clean-tree apply policy, protected path checks, generated-code exclusion, diff budgets, and rollback evidence.
+- No telemetry, source upload, LLM dependency, dependency upgrade, or fake quality score.
+
 ## v0.1.0 - 2026-10-01
 
 Initial usable preview release.
