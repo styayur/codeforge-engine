@@ -1,5 +1,5 @@
 export type Theme = "dark" | "light" | "system";
-export type View = "workspace" | "review" | "refactor" | "optimize" | "rules" | "engines" | "settings";
+export type View = "workspace" | "fleet" | "review" | "refactor" | "optimize" | "rules" | "engines" | "settings";
 export type Severity = "hint" | "info" | "warning" | "error";
 export type VerificationStatus = "not_run" | "passed" | "failed" | "unavailable" | "skipped";
 
@@ -189,4 +189,57 @@ export interface OptimizationReport {
   verification: VerificationResult;
   benchmark?: BenchmarkResult;
   message: string;
+}
+
+export interface ProjectProfile {
+  root: string;
+  name: string;
+  ecosystems: Array<{
+    ecosystem: string;
+    languages: string[];
+    markers: string[];
+    confidence: string;
+    suggested_commands: Record<string, string[]>;
+  }>;
+  languages: string[];
+}
+
+export interface EvidenceBundle {
+  id: string;
+  repository: string;
+  commit?: string;
+  branch?: string;
+  risk: string;
+  transformation_classes: string[];
+  baseline: VerificationResult;
+  after: VerificationResult;
+  evidence: Record<string, VerificationStatus>;
+  benchmark?: BenchmarkResult;
+  patch?: Patch;
+  report_dir: string;
+}
+
+export interface RepoRunSummary {
+  repository: string;
+  path: string;
+  status: string;
+  languages: string[];
+  project_profile?: ProjectProfile;
+  findings: number;
+  pending_transformations: number;
+  risk: string;
+  verification?: VerificationResult;
+  evidence?: EvidenceBundle;
+  report_path?: string;
+  message: string;
+}
+
+export interface FleetRunSummary {
+  run_id: string;
+  fleet_name: string;
+  status: string;
+  started_at: string;
+  finished_at: string;
+  repositories: RepoRunSummary[];
+  report_dir: string;
 }

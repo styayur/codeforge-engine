@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   BenchmarkSnapshot,
+  FleetRunSummary,
   FixPreviewResponse,
   OptimizationReport,
   ReviewReport,
@@ -25,6 +26,16 @@ export async function chooseWorkspace(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+export async function chooseFleetConfig(): Promise<string | null> {
+  if (!isTauri()) return null;
+  const selected = await open({
+    multiple: false,
+    title: "Open fleet.toml",
+    filters: [{ name: "CodeForge fleet configuration", extensions: ["toml"] }]
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 export const api = {
   openWorkspace: (path: string) => command<WorkspaceResponse>("open_workspace", { path }),
   getWorkspace: () => command<WorkspaceResponse>("get_workspace"),
@@ -38,5 +49,7 @@ export const api = {
   listHistory: () => command<TransactionRecord[]>("list_history"),
   verify: (full = true) => command<VerificationResult>("run_verification", { full }),
   optimize: () => command<OptimizationReport>("run_optimization"),
-  benchmark: (samples = 5) => command<BenchmarkSnapshot>("run_benchmark", { samples })
+  benchmark: (samples = 5) => command<BenchmarkSnapshot>("run_benchmark", { samples }),
+  runFleet: (fleetCommand: string, configPath: string, risk = "medium") =>
+    command<FleetRunSummary>("run_fleet", { command: fleetCommand, configPath, risk })
 };

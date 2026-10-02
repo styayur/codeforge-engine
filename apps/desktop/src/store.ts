@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import { api, chooseWorkspace } from "./api";
+import { api, chooseFleetConfig, chooseWorkspace } from "./api";
 import type {
   BenchmarkSnapshot,
   Diagnostic,
   EngineStatus,
+  FleetRunSummary,
   FixPreviewResponse,
   OptimizationReport,
   TransactionRecord,
@@ -24,6 +25,8 @@ interface AppStore {
   verification?: VerificationResult;
   optimization?: OptimizationReport;
   benchmark?: BenchmarkSnapshot;
+  fleet?: FleetRunSummary;
+  fleetConfigPath?: string;
   history: TransactionRecord[];
   loading: boolean;
   error?: string;
@@ -39,6 +42,8 @@ interface AppStore {
   runVerification: () => Promise<void>;
   runOptimization: () => Promise<void>;
   runBenchmark: () => Promise<void>;
+  chooseFleetConfig: () => Promise<void>;
+  runFleet: (command: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -170,6 +175,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ loading: true, error: undefined });
     try {
       set({ benchmark: await api.benchmark(5) });
+    } catch (error) {
+      set({ error: message(error) });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  chooseFleetConfig: async () => {
+    const path = await chooseFleetConfig();
+    if (path) set({ fleetConfigPath: path, error: undefined });
+  },
+
+  runFleet: async (command) => {
+    const configPath = get().fleetConfigPath;
+    if (!configPath) {
+      set({ error: "Choose a fleet.toml before running a fleet operation." });
+      return;
+    }
+    set({ loading: true, error: undefined, view: "fleet" });
+    try {
+      set({ fleet: await api.runFleet(command, configPath) });
     } catch (error) {
       set({ error: message(error) });
     } finally {
