@@ -72,3 +72,62 @@ async fn java_fixture_suite() {
 async fn go_fixture_suite() {
     assert_language(Language::Go, "go", "bad.go").await;
 }
+
+#[tokio::test]
+async fn dart_fixture_suite() {
+    let engine = CodeForgeEngine::open(fixture("dart")).expect("open fixture");
+    let report = engine
+        .review(ReviewOptions {
+            languages: vec![Language::Dart],
+            changed_only: false,
+            include_external: false,
+        })
+        .await
+        .expect("review");
+    assert_eq!(report.files_analyzed, 5);
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id == "PARSE-001" && diagnostic.file.to_string_lossy().contains("bad.dart")
+    }));
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id.starts_with("CF-DART-")
+            && diagnostic.file.to_string_lossy().contains("fixable.dart")
+    }));
+}
+
+#[tokio::test]
+async fn powershell_fixture_suite() {
+    let engine = CodeForgeEngine::open(fixture("powershell")).expect("open fixture");
+    let report = engine
+        .review(ReviewOptions {
+            languages: vec![Language::PowerShell],
+            changed_only: false,
+            include_external: false,
+        })
+        .await
+        .expect("review");
+    assert_eq!(report.files_analyzed, 5);
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id == "PARSE-001" && diagnostic.file.to_string_lossy().contains("bad.ps1")
+    }));
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id.starts_with("CF-PS-")
+            && diagnostic.file.to_string_lossy().contains("refactor.ps1")
+    }));
+}
+
+#[tokio::test]
+async fn markdown_fixture_suite() {
+    let engine = CodeForgeEngine::open(fixture("markdown")).expect("open fixture");
+    let report = engine
+        .review(ReviewOptions {
+            languages: vec![Language::Markdown],
+            changed_only: false,
+            include_external: false,
+        })
+        .await
+        .expect("review");
+    assert_eq!(report.files_analyzed, 5);
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id == "CF-MD-001" && diagnostic.file.to_string_lossy().contains("bad.md")
+    }));
+}
