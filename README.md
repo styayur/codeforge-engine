@@ -193,7 +193,7 @@ cwd = "."
 timeout_secs = 600
 ```
 
-Supported command keys are `syntax`, `typecheck`, `build`, `test`, `fuzz`, `differential`, `equivalence`, and `benchmark`.
+Supported command keys are `format`, `lint`, `syntax`, `typecheck`, `build`, `test`, `fuzz`, `differential`, `equivalence`, and `benchmark`. `format` and `lint` take precedence over auto-detected syntax/typecheck commands.
 
 For fleet selection and policy, create `fleet.toml` and see [fleet-mode.md](docs/fleet-mode.md). Repository execution remains in `.codeforge.toml`.
 

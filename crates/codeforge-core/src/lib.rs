@@ -405,10 +405,12 @@ impl CodeForgeEngine {
             .filter(|record| record.language.is_some())
             .map(|record| record.path)
             .collect::<Vec<_>>();
-        let syntax = verify_syntax_files(&files);
         let plan = self.verification_plan(root, &languages, full);
+        let configured_syntax = plan.syntax.is_some();
         let mut result = VerificationPipeline.run(plan).await;
-        result.syntax = syntax;
+        if !configured_syntax {
+            result.syntax = verify_syntax_files(&files);
+        }
         Ok(result)
     }
 
@@ -590,6 +592,8 @@ impl CodeForgeEngine {
             ("differential", 5),
             ("equivalence", 6),
             ("benchmark", 7),
+            ("format", 0),
+            ("lint", 1),
         ] {
             if let Some(command) = self.config.command(root, id) {
                 match field {
@@ -613,26 +617,33 @@ impl CodeForgeEngine {
                 Language::Python => {
                     if let Some(python) = find_executable("python")
                         && (root.join("tests").exists() || root.join("pyproject.toml").exists())
+                        && plan.tests.is_none()
                     {
                         plan.tests = Some(CommandSpec::new(python, ["-m", "pytest"], root));
                     }
                 }
                 Language::Rust => {
                     if let Some(cargo) = find_executable("cargo") {
-                        plan.build = Some(CommandSpec::new(
-                            cargo.clone(),
-                            ["check", "--all-targets"],
-                            root,
-                        ));
-                        plan.tests = Some(CommandSpec::new(cargo, ["test", "--all-targets"], root));
+                        if plan.build.is_none() {
+                            plan.build = Some(CommandSpec::new(
+                                cargo.clone(),
+                                ["check", "--all-targets"],
+                                root,
+                            ));
+                        }
+                        if plan.tests.is_none() {
+                            plan.tests =
+                                Some(CommandSpec::new(cargo, ["test", "--all-targets"], root));
+                        }
                     }
                 }
                 Language::JavaScript | Language::TypeScript => {
                     if let Some((program, args)) = self.package_manager_command(root) {
                         let package = read_package_json(root).ok();
-                        if package
-                            .as_ref()
-                            .is_some_and(|value| has_script(value, "typecheck"))
+                        if plan.typecheck.is_none()
+                            && package
+                                .as_ref()
+                                .is_some_and(|value| has_script(value, "typecheck"))
                         {
                             plan.typecheck = Some(CommandSpec::new(
                                 program.clone(),
@@ -641,9 +652,10 @@ impl CodeForgeEngine {
                                 root,
                             ));
                         }
-                        if package
-                            .as_ref()
-                            .is_some_and(|value| has_script(value, "build"))
+                        if plan.build.is_none()
+                            && package
+                                .as_ref()
+                                .is_some_and(|value| has_script(value, "build"))
                         {
                             plan.build = Some(CommandSpec::new(
                                 program.clone(),
@@ -651,9 +663,10 @@ impl CodeForgeEngine {
                                 root,
                             ));
                         }
-                        if package
-                            .as_ref()
-                            .is_some_and(|value| has_script(value, "test"))
+                        if plan.tests.is_none()
+                            && package
+                                .as_ref()
+                                .is_some_and(|value| has_script(value, "test"))
                         {
                             plan.tests = Some(CommandSpec::new(
                                 program,
@@ -664,7 +677,9 @@ impl CodeForgeEngine {
                     }
                 }
                 Language::Java => {
-                    if root.join("pom.xml").exists() {
+                    if plan.tests.is_some() {
+                        // A repository-level test command is authoritative.
+                    } else if root.join("pom.xml").exists() {
                         if let Some(mvn) = find_executable("mvn") {
                             plan.tests = Some(CommandSpec::new(mvn, ["test"], root));
                         }
@@ -677,8 +692,13 @@ impl CodeForgeEngine {
                 }
                 Language::Go => {
                     if let Some(go) = find_executable("go") {
-                        plan.build = Some(CommandSpec::new(go.clone(), ["test", "./..."], root));
-                        plan.tests = Some(CommandSpec::new(go, ["test", "./..."], root));
+                        if plan.build.is_none() {
+                            plan.build =
+                                Some(CommandSpec::new(go.clone(), ["test", "./..."], root));
+                        }
+                        if plan.tests.is_none() {
+                            plan.tests = Some(CommandSpec::new(go, ["test", "./..."], root));
+                        }
                     }
                 }
                 Language::C => {
@@ -686,44 +706,56 @@ impl CodeForgeEngine {
                         && let Some(cmake) = find_executable("cmake")
                     {
                         let build_dir = root.join(".codeforge").join("build");
-                        plan.build = Some(CommandSpec::new(
-                            cmake.clone(),
-                            [
-                                "-S",
-                                root.to_string_lossy().as_ref(),
-                                "-B",
-                                build_dir.to_string_lossy().as_ref(),
-                            ],
-                            root,
-                        ));
-                        plan.tests = Some(CommandSpec::new(
-                            cmake,
-                            ["--build", build_dir.to_string_lossy().as_ref()],
-                            root,
-                        ));
+                        if plan.build.is_none() {
+                            plan.build = Some(CommandSpec::new(
+                                cmake.clone(),
+                                [
+                                    "-S",
+                                    root.to_string_lossy().as_ref(),
+                                    "-B",
+                                    build_dir.to_string_lossy().as_ref(),
+                                ],
+                                root,
+                            ));
+                        }
+                        if plan.tests.is_none() {
+                            plan.tests = Some(CommandSpec::new(
+                                cmake,
+                                ["--build", build_dir.to_string_lossy().as_ref()],
+                                root,
+                            ));
+                        }
                     }
                 }
                 Language::Dart => {
-                    if let Some(dart) = find_executable("dart") {
+                    if plan.typecheck.is_none()
+                        && let Some(dart) = find_executable("dart")
+                    {
                         plan.typecheck = Some(CommandSpec::new(dart, ["analyze"], root));
                     }
-                    if let Some(flutter) = find_executable("flutter") {
+                    if plan.tests.is_none()
+                        && let Some(flutter) = find_executable("flutter")
+                    {
                         plan.tests = Some(CommandSpec::new(flutter, ["test"], root));
                     }
                 }
                 Language::PowerShell => {
                     if let Some(pwsh) = find_executable("pwsh") {
                         let script = "[void][System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$null,[ref]$errors); if($errors.Count){ exit 1 }";
-                        plan.syntax = Some(CommandSpec::new(
-                            pwsh.clone(),
-                            ["-NoProfile", "-NonInteractive", "-Command", script],
-                            root,
-                        ));
-                        plan.tests = Some(CommandSpec::new(
-                            pwsh,
-                            ["-NoProfile", "-NonInteractive", "-Command", "Invoke-Pester"],
-                            root,
-                        ));
+                        if plan.syntax.is_none() {
+                            plan.syntax = Some(CommandSpec::new(
+                                pwsh.clone(),
+                                ["-NoProfile", "-NonInteractive", "-Command", script],
+                                root,
+                            ));
+                        }
+                        if plan.tests.is_none() {
+                            plan.tests = Some(CommandSpec::new(
+                                pwsh,
+                                ["-NoProfile", "-NonInteractive", "-Command", "Invoke-Pester"],
+                                root,
+                            ));
+                        }
                     }
                 }
                 Language::Markdown
@@ -1184,5 +1216,34 @@ mod tests {
                 .iter()
                 .any(|status| status.metadata.id == "python-builtin")
         );
+    }
+
+    #[test]
+    fn repository_commands_override_auto_detection() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("Cargo.toml"), "[workspace]\n").expect("cargo");
+        fs::write(
+            temp.path().join(".codeforge.toml"),
+            r#"
+[commands.format]
+program = "custom-format"
+
+[commands.lint]
+program = "custom-lint"
+
+[commands.build]
+program = "custom-build"
+
+[commands.test]
+program = "custom-test"
+"#,
+        )
+        .expect("config");
+        let engine = CodeForgeEngine::open(temp.path()).expect("engine");
+        let plan = engine.verification_plan(temp.path(), &[Language::Rust], true);
+        assert_eq!(plan.syntax.expect("format").program, "custom-format");
+        assert_eq!(plan.typecheck.expect("lint").program, "custom-lint");
+        assert_eq!(plan.build.expect("build").program, "custom-build");
+        assert_eq!(plan.tests.expect("test").program, "custom-test");
     }
 }
