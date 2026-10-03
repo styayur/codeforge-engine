@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -16,6 +16,7 @@ description = "Local-first, verification-driven, language-aware code transformat
 
 [workspace.dependencies]
 codeforge-benchmark = { path = "crates/codeforge-benchmark" }
+codeforge-baseline = { path = "crates/codeforge-baseline" }
 codeforge-core = { path = "crates/codeforge-core" }
 codeforge-diagnostics = { path = "crates/codeforge-diagnostics" }
 codeforge-engines = { path = "crates/codeforge-engines" }

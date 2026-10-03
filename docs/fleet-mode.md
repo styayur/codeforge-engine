@@ -80,6 +80,11 @@ Run summaries are written to `<report-dir>/<run-id>/run.json` and
 `summary.md`. Each repository evidence bundle is written below
 `<report-dir>/<run-id>/<repository>/`.
 
+Fleet summaries distinguish execution from findings and split source findings
+from tool gaps. A completed run with findings reports `execution_status:
+complete` and `finding_status: findings`; missing local tools are listed in
+`tool_gaps` and do not inflate the source-finding count.
+
 ## Cache
 
 Fleet cache keys include the repository, Git commit, configuration hash, tool
@@ -97,3 +102,9 @@ the duration of a fleet run instead of starting a fresh runtime per repository.
 5 external tool unavailable
 6 safety policy refusal
 ```
+
+Exit code `1` means execution completed and source findings were found. It is
+not an execution failure.
+
+Reviewed baseline behavior is documented in [baseline.md](baseline.md) and
+[regression-ci.md](regression-ci.md).

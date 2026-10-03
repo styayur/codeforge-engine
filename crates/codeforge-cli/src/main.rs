@@ -3,9 +3,12 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
+use codeforge_baseline::{BaselineStore, PrecisionRow};
 use codeforge_core::{CodeForgeEngine, ReviewOptions};
-use codeforge_fleet::{FleetCommand as FleetOperation, FleetConfig, FleetRunOptions, FleetRunner};
-use codeforge_protocol::{Language, Severity, diagnostics_to_sarif};
+use codeforge_fleet::{
+    Doctor, FleetCommand as FleetOperation, FleetConfig, FleetRunOptions, FleetRunner,
+};
+use codeforge_protocol::{FindingDisposition, Language, Severity, diagnostics_to_sarif};
 use serde::Serialize;
 
 #[derive(Debug, Parser)]
@@ -37,6 +40,12 @@ enum Command {
     Verify(CommonArgs),
     /// Run a configured or auto-detected benchmark command.
     Benchmark(BenchmarkArgs),
+    /// Inspect local tool availability without installing anything.
+    Doctor(DoctorArgs),
+    /// Review and maintain the accepted-findings baseline.
+    Baseline(BaselineArgs),
+    /// Report reviewed-baseline precision metrics.
+    Stats(StatsArgs),
     /// Run read-only review and verification for CI.
     Ci(CiArgs),
     /// Orchestrate independent repository transactions across a fleet.
@@ -65,6 +74,15 @@ struct CommonArgs {
     /// Include available external lint engines.
     #[arg(long)]
     external: bool,
+    /// Include fixture findings in review output.
+    #[arg(long)]
+    include_fixtures: bool,
+    /// Show only findings in the human-review queue.
+    #[arg(long)]
+    queue: bool,
+    /// Optional reviewed baseline for queue and classification output.
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    baseline: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -92,6 +110,80 @@ struct CiArgs {
     sarif: Option<PathBuf>,
     #[arg(long)]
     json: bool,
+    /// Reviewed baseline; when supplied, CI fails on new regressions by default.
+    #[arg(long)]
+    baseline: Option<PathBuf>,
+    /// Failure policy: `new`, `any`, or `none`.
+    #[arg(long, default_value = "new")]
+    fail_on: String,
+    /// Emit only new findings in SARIF.
+    #[arg(long)]
+    new_only: bool,
+}
+
+#[derive(Debug, Args)]
+struct DoctorArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct StatsArgs {
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    baseline: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct BaselineArgs {
+    #[command(subcommand)]
+    command: BaselineCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum BaselineCommand {
+    Show(BaselineShowArgs),
+    Review(BaselineShowArgs),
+    Accept(BaselineActionArgs),
+    FalsePositive(BaselineActionArgs),
+    Unreview(BaselineActionArgs),
+    Prune(BaselineShowArgs),
+    Migrate(BaselineMigrateArgs),
+}
+
+#[derive(Debug, Args)]
+struct BaselineShowArgs {
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    file: PathBuf,
+    #[arg(long)]
+    json: bool,
+    #[arg(long)]
+    path: Option<PathBuf>,
+    #[arg(long)]
+    include_fixtures: bool,
+}
+
+#[derive(Debug, Args)]
+struct BaselineActionArgs {
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    file: PathBuf,
+    #[arg(long, default_value = ".")]
+    path: PathBuf,
+    #[arg(long)]
+    finding: String,
+    #[arg(long)]
+    reason: String,
+}
+
+#[derive(Debug, Args)]
+struct BaselineMigrateArgs {
+    #[arg(long)]
+    from: PathBuf,
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    to: PathBuf,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -109,6 +201,37 @@ enum FleetSubcommand {
     Optimize(FleetRunArgs),
     Verify(FleetRunArgs),
     Report(FleetRunArgs),
+    Doctor(FleetDoctorArgs),
+    Baseline(FleetBaselineArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+struct FleetDoctorArgs {
+    #[arg(long, default_value = "fleet.toml")]
+    config: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+struct FleetBaselineArgs {
+    #[command(subcommand)]
+    command: FleetBaselineSubcommand,
+}
+
+#[derive(Debug, Subcommand, Clone)]
+enum FleetBaselineSubcommand {
+    Report(FleetBaselineReportArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+struct FleetBaselineReportArgs {
+    #[arg(long, default_value = "fleet.toml")]
+    config: PathBuf,
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    baseline: PathBuf,
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -160,6 +283,9 @@ async fn main() -> ExitCode {
         Command::Optimize(args) => optimize(args).await,
         Command::Verify(args) => verify(args).await,
         Command::Benchmark(args) => benchmark(args).await,
+        Command::Doctor(args) => doctor(args).await,
+        Command::Baseline(args) => baseline(args).await,
+        Command::Stats(args) => stats(args).await,
         Command::Ci(args) => ci(args).await,
         Command::Fleet(args) => fleet(args).await,
     };
@@ -245,8 +371,17 @@ async fn scan(args: CommonArgs) -> Result<()> {
 
 async fn review(args: CommonArgs) -> Result<()> {
     let engine = open(&args.path)?;
-    let report = engine.review(review_options(&args)).await?;
+    let report = if args.include_fixtures {
+        engine
+            .review_including_non_production(review_options(&args))
+            .await?
+    } else {
+        engine.review(review_options(&args)).await?
+    };
     let diagnostics = filter_diagnostics(report.diagnostics, &args.engines);
+    if args.queue {
+        return review_queue(&engine, &args, &diagnostics);
+    }
     if args.sarif {
         print_json(&diagnostics_to_sarif(&diagnostics))?;
     } else if args.json {
@@ -287,6 +422,66 @@ async fn review(args: CommonArgs) -> Result<()> {
                         .join(", ")
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+fn review_queue(
+    engine: &CodeForgeEngine,
+    args: &CommonArgs,
+    diagnostics: &[codeforge_protocol::Diagnostic],
+) -> Result<()> {
+    let store = BaselineStore::load(resolve_cli_path(engine.root(), &args.baseline))
+        .with_context(|| format!("cannot load baseline {}", args.baseline.display()))?;
+    let assessments = store.classify_diagnostics(diagnostics, engine.root());
+    let mut rows = diagnostics
+        .iter()
+        .zip(assessments)
+        .filter(|(_, assessment)| {
+            assessment.disposition == FindingDisposition::HumanReview
+                || assessment.lifecycle == codeforge_protocol::FindingLifecycle::Ambiguous
+        })
+        .map(|(diagnostic, assessment)| {
+            serde_json::json!({
+                "fingerprint": assessment.fingerprint,
+                "rule_id": diagnostic.rule_id,
+                "severity": diagnostic.severity,
+                "confidence": diagnostic.confidence,
+                "source_context": diagnostic.source_context,
+                "producer": diagnostic.producer,
+                "native_rule_id": diagnostic.native_rule_id,
+                "file": diagnostic.file,
+                "line": diagnostic.range.start_line,
+                "message": diagnostic.message,
+                "match_kind": assessment.match_kind,
+            })
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        left["rule_id"]
+            .to_string()
+            .cmp(&right["rule_id"].to_string())
+    });
+    if args.json {
+        print_json(&rows)?;
+    } else if rows.is_empty() {
+        println!("Human-review queue is empty.");
+    } else {
+        println!("Human-review queue: {}", rows.len());
+        for row in rows {
+            let source_context = row["source_context"].as_str().unwrap_or("unknown");
+            let confidence = row["confidence"].as_str().unwrap_or("unknown");
+            println!(
+                "{} [{}] {}:{} {} ({}, {})",
+                row["fingerprint"].as_str().unwrap_or_default(),
+                row["rule_id"].as_str().unwrap_or_default(),
+                row["file"].as_str().unwrap_or_default(),
+                row["line"].as_u64().unwrap_or_default(),
+                row["message"].as_str().unwrap_or_default(),
+                source_context,
+                confidence
+            );
         }
     }
     Ok(())
@@ -393,6 +588,248 @@ async fn benchmark(args: BenchmarkArgs) -> Result<()> {
     Ok(())
 }
 
+async fn doctor(args: DoctorArgs) -> Result<()> {
+    let report = Doctor::scan(&args.path).await;
+    if args.json {
+        print_json(&serde_json::json!({
+            "root": report.root,
+            "entries": report.entries,
+            "gaps": report.gaps,
+        }))?;
+    } else {
+        println!("Toolchain doctor: {}", report.root.display());
+        for entry in &report.entries {
+            println!(
+                "{:<24} {:<8} {:<20} {}",
+                entry.tool,
+                entry.status,
+                entry.version.as_deref().unwrap_or("unknown version"),
+                entry
+                    .path
+                    .as_deref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "not found".to_owned())
+            );
+            println!("  required for: {}", entry.required_for);
+            if let Some(hint) = &entry.install_hint {
+                println!("  hint: {hint}");
+            }
+        }
+        println!("{} tool gap(s)", report.gaps.len());
+    }
+    Ok(())
+}
+
+async fn baseline(args: BaselineArgs) -> Result<()> {
+    match args.command {
+        BaselineCommand::Show(args) => show_baseline(args, false).await?,
+        BaselineCommand::Review(args) => show_baseline(args, true).await?,
+        BaselineCommand::Accept(args) => {
+            update_baseline(
+                &args.file,
+                &args.path,
+                &args.finding,
+                FindingDisposition::Accepted,
+                Some(args.reason),
+            )
+            .await?;
+        }
+        BaselineCommand::FalsePositive(args) => {
+            update_baseline(
+                &args.file,
+                &args.path,
+                &args.finding,
+                FindingDisposition::FalsePositive,
+                Some(args.reason),
+            )
+            .await?;
+        }
+        BaselineCommand::Unreview(args) => {
+            update_baseline(
+                &args.file,
+                &args.path,
+                &args.finding,
+                FindingDisposition::Unreviewed,
+                None,
+            )
+            .await?;
+        }
+        BaselineCommand::Prune(args) => {
+            let mut store = BaselineStore::load(&args.file)?;
+            let removed = store.prune();
+            store.save(&args.file)?;
+            if args.json {
+                print_json(&serde_json::json!({ "removed": removed }))?;
+            } else {
+                println!("Removed {removed} resolved/stale baseline entries.");
+            }
+        }
+        BaselineCommand::Migrate(args) => {
+            let (store, report) = BaselineStore::migrate_legacy(&args.from)?;
+            store.save(&args.to)?;
+            print_json(&report)?;
+        }
+    }
+    Ok(())
+}
+
+async fn show_baseline(args: BaselineShowArgs, review: bool) -> Result<()> {
+    let store = BaselineStore::load(&args.file)
+        .with_context(|| format!("cannot load baseline {}", args.file.display()))?;
+    if !review {
+        if args.json {
+            print_json(&store.entries())?;
+        } else if store.entries().is_empty() {
+            println!("No baseline entries.");
+        } else {
+            for entry in store.entries() {
+                println!(
+                    "{} [{}] {}:{} {:?}",
+                    entry.fingerprint,
+                    entry.rule_id,
+                    entry.path.display(),
+                    entry.symbol.as_deref().unwrap_or("-"),
+                    entry.disposition
+                );
+                if let Some(reason) = &entry.reason {
+                    println!("  reason: {reason}");
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    let repository = args.path.clone().unwrap_or_else(|| PathBuf::from("."));
+    let engine = open(&repository)?;
+    let options = ReviewOptions {
+        languages: Vec::new(),
+        changed_only: false,
+        include_external: true,
+    };
+    let report = if args.include_fixtures {
+        engine.review_including_non_production(options).await?
+    } else {
+        engine.review(options).await?
+    };
+    let assessments = store.classify_diagnostics(&report.diagnostics, engine.root());
+    let mut rows = report
+        .diagnostics
+        .iter()
+        .zip(assessments)
+        .filter(|(_, assessment)| {
+            assessment.match_kind == codeforge_protocol::BaselineMatchKind::New
+                || assessment.disposition == FindingDisposition::HumanReview
+                || assessment.lifecycle == codeforge_protocol::FindingLifecycle::Ambiguous
+        })
+        .map(|(diagnostic, assessment)| {
+            serde_json::json!({
+                "fingerprint": assessment.fingerprint,
+                "rule_id": diagnostic.rule_id,
+                "severity": diagnostic.severity,
+                "confidence": diagnostic.confidence,
+                "source_context": diagnostic.source_context,
+                "file": diagnostic.file,
+                "line": diagnostic.range.start_line,
+                "message": diagnostic.message,
+                "match_kind": assessment.match_kind,
+            })
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        left["rule_id"]
+            .to_string()
+            .cmp(&right["rule_id"].to_string())
+    });
+    if args.json {
+        print_json(&rows)?;
+    } else if rows.is_empty() {
+        println!("No unreviewed or human-review findings.");
+    } else {
+        for row in rows {
+            println!(
+                "{} [{}] {}:{} {} ({}, {})",
+                row["fingerprint"].as_str().unwrap_or_default(),
+                row["rule_id"].as_str().unwrap_or_default(),
+                row["file"].as_str().unwrap_or_default(),
+                row["line"].as_u64().unwrap_or_default(),
+                row["message"].as_str().unwrap_or_default(),
+                row["source_context"].as_str().unwrap_or("unknown"),
+                row["confidence"].as_str().unwrap_or("unknown")
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn update_baseline(
+    path: &PathBuf,
+    repository: &PathBuf,
+    finding: &str,
+    disposition: FindingDisposition,
+    reason: Option<String>,
+) -> Result<()> {
+    let mut store = if path.exists() {
+        BaselineStore::load(path)?
+    } else {
+        BaselineStore::new()
+    };
+    if !store.set_disposition(finding, disposition, reason.clone())? {
+        let engine = open(repository)?;
+        let report = engine
+            .review_including_non_production(review_options(&CommonArgs {
+                path: repository.clone(),
+                json: false,
+                sarif: false,
+                changed: false,
+                languages: Vec::new(),
+                engines: Vec::new(),
+                external: true,
+                include_fixtures: true,
+                queue: false,
+                baseline: path.clone(),
+            }))
+            .await?;
+        let diagnostic = report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| {
+                let fingerprint =
+                    codeforge_baseline::fingerprint_diagnostic(diagnostic, engine.root());
+                fingerprint.exact == finding
+            })
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("finding fingerprint not found: {finding}"))?;
+        store.review(&diagnostic, engine.root(), disposition, reason)?;
+    }
+    store.save(path)?;
+    println!("Updated {finding} to {disposition}.");
+    Ok(())
+}
+
+async fn stats(args: StatsArgs) -> Result<()> {
+    let store = BaselineStore::load(&args.baseline)?;
+    let rows = store.precision_stats();
+    if args.json {
+        print_json(&rows)?;
+    } else {
+        print_precision_rows(&rows);
+    }
+    Ok(())
+}
+
+fn print_precision_rows(rows: &[PrecisionRow]) {
+    println!(
+        "{:<28} {:>9} {:>9} {:>9} {:>9}",
+        "rule", "reviewed", "accepted", "false+", "human"
+    );
+    for row in rows {
+        println!(
+            "{:<28} {:>9} {:>9} {:>9} {:>9}",
+            row.rule_id, row.reviewed, row.accepted, row.false_positive, row.human_review
+        );
+    }
+}
+
 async fn beautify(args: CommonArgs) -> Result<()> {
     let root = args
         .path
@@ -425,7 +862,7 @@ async fn beautify(args: CommonArgs) -> Result<()> {
 async fn ci(args: CiArgs) -> Result<()> {
     let _risk = parse_risk(&args.risk)?;
     let engine = open(&args.path)?;
-    let mut report = engine
+    let report = engine
         .review(ReviewOptions {
             languages: Vec::new(),
             changed_only: args.changed,
@@ -433,8 +870,48 @@ async fn ci(args: CiArgs) -> Result<()> {
         })
         .await?;
     let verification = engine.verify(true).await?;
+    let baseline_path = args
+        .baseline
+        .as_ref()
+        .map(|path| resolve_cli_path(engine.root(), path));
+    let comparison = if let Some(path) = &baseline_path {
+        let store = BaselineStore::load(path)
+            .with_context(|| format!("cannot load baseline {}", path.display()))?;
+        Some(store.compare(&report.diagnostics, engine.root()))
+    } else {
+        None
+    };
+    let assessments = if let Some(path) = &baseline_path {
+        let store = BaselineStore::load(path)?;
+        store.classify_diagnostics(&report.diagnostics, engine.root())
+    } else {
+        Vec::new()
+    };
     if let Some(path) = &args.sarif {
-        let sarif = diagnostics_to_sarif(&report.diagnostics);
+        let diagnostics = if args.new_only {
+            let new_fingerprints = comparison
+                .as_ref()
+                .map(|comparison| {
+                    comparison
+                        .new
+                        .iter()
+                        .map(|entry| entry.fingerprint.as_str())
+                        .collect::<std::collections::BTreeSet<_>>()
+                })
+                .unwrap_or_default();
+            report
+                .diagnostics
+                .iter()
+                .zip(&assessments)
+                .filter(|(_, assessment)| {
+                    new_fingerprints.contains(assessment.fingerprint.as_str())
+                })
+                .map(|(diagnostic, _)| diagnostic.clone())
+                .collect::<Vec<_>>()
+        } else {
+            report.diagnostics.clone()
+        };
+        let sarif = diagnostics_to_sarif(&diagnostics);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -443,6 +920,8 @@ async fn ci(args: CiArgs) -> Result<()> {
     if args.json {
         print_json(&serde_json::json!({
             "diagnostics": report.diagnostics,
+            "assessments": assessments,
+            "baseline": comparison,
             "verification": verification,
         }))?;
     } else {
@@ -463,14 +942,33 @@ async fn ci(args: CiArgs) -> Result<()> {
     ) {
         anyhow::bail!("verification failure");
     }
-    if !report.diagnostics.is_empty() {
-        report.diagnostics.clear();
-        anyhow::bail!("findings");
+    match (comparison.as_ref(), args.fail_on.as_str()) {
+        (Some(comparison), "new") if !comparison.new.is_empty() => {
+            anyhow::bail!("new regressions");
+        }
+        (Some(_), "none") => {}
+        (Some(_), "any") if !report.diagnostics.is_empty() => {
+            anyhow::bail!("findings");
+        }
+        (Some(_), "new" | "any") => {}
+        (None, _) if !report.diagnostics.is_empty() => {
+            anyhow::bail!("findings");
+        }
+        (None, "new" | "any" | "none") => {}
+        (_, policy) => {
+            anyhow::bail!("invalid --fail-on policy: {policy}");
+        }
     }
     Ok(())
 }
 
 async fn fleet(args: FleetArgs) -> Result<()> {
+    if let FleetSubcommand::Doctor(args) = &args.command {
+        return fleet_doctor(args).await;
+    }
+    if let FleetSubcommand::Baseline(args) = &args.command {
+        return fleet_baseline_report(args).await;
+    }
     let (operation, run_args) = match &args.command {
         FleetSubcommand::Audit(args) => (FleetOperation::Audit, args),
         FleetSubcommand::Format(args) => (FleetOperation::Format, args),
@@ -479,6 +977,7 @@ async fn fleet(args: FleetArgs) -> Result<()> {
         FleetSubcommand::Optimize(args) => (FleetOperation::Optimize, args),
         FleetSubcommand::Verify(args) => (FleetOperation::Verify, args),
         FleetSubcommand::Report(args) => (FleetOperation::Report, args),
+        FleetSubcommand::Doctor(_) | FleetSubcommand::Baseline(_) => unreachable!(),
     };
     if run_args.dry_run && run_args.apply {
         anyhow::bail!("conflicting flags: --dry-run and --apply");
@@ -501,6 +1000,55 @@ async fn fleet(args: FleetArgs) -> Result<()> {
     fleet_exit(&summary)
 }
 
+async fn fleet_doctor(args: &FleetDoctorArgs) -> Result<()> {
+    let config = FleetConfig::load(&args.config)?;
+    let mut reports = Vec::new();
+    for repository in config.repositories()? {
+        let report = Doctor::scan(&repository.path).await;
+        reports.push(serde_json::json!({
+            "repository": repository.name,
+            "path": repository.path,
+            "entries": report.entries,
+            "gaps": report.gaps,
+        }));
+    }
+    if args.json {
+        print_json(&reports)?;
+    } else {
+        for report in reports {
+            let repository = report["repository"].as_str().unwrap_or_default();
+            println!("## {repository}");
+            let entries = report["entries"].as_array().cloned().unwrap_or_default();
+            for entry in entries {
+                println!(
+                    "  {:<24} {}",
+                    entry["tool"].as_str().unwrap_or_default(),
+                    entry["status"].as_str().unwrap_or_default()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn fleet_baseline_report(args: &FleetBaselineArgs) -> Result<()> {
+    let FleetBaselineSubcommand::Report(report_args) = &args.command;
+    let _config = FleetConfig::load(&report_args.config)?;
+    let store = BaselineStore::load(&report_args.baseline)?;
+    let rows = store.precision_stats();
+    let summary = serde_json::json!({
+        "entries": store.entries().len(),
+        "precision": rows,
+    });
+    if report_args.json {
+        print_json(&summary)?;
+    } else {
+        println!("Baseline entries: {}", store.entries().len());
+        print_precision_rows(&rows);
+    }
+    Ok(())
+}
+
 fn print_fleet_summary(
     summary: &codeforge_protocol::FleetRunSummary,
     json: bool,
@@ -515,13 +1063,20 @@ fn print_fleet_summary(
         println!("Fleet:  {}", summary.fleet_name);
         println!("Run:    {}", summary.run_id);
         println!("Status: {:?}", summary.status);
+        println!("Execution: {:?}", summary.execution_status);
+        println!("Findings:  {:?}", summary.finding_status);
+        println!("Source findings: {}", summary.source_findings);
+        println!("Tool gaps: {}", summary.tool_gaps.len());
+        println!("Verification failures: {}", summary.verification_failures);
+        println!("Configuration failures: {}", summary.configuration_failures);
         println!("Report: {}", summary.report_dir.display());
         for repository in &summary.repositories {
             println!(
-                "  {:<24} {:<20} findings={:<4} pending={}",
+                "  {:<24} {:<20} source={:<4} gaps={:<3} pending={}",
                 repository.repository,
                 format!("{:?}", repository.status),
-                repository.findings,
+                repository.source_findings.max(repository.findings),
+                repository.tool_gaps.len(),
                 repository.pending_transformations
             );
             if let Some(report) = &repository.report_path {
@@ -619,6 +1174,18 @@ fn parse_risk(value: &str) -> Result<codeforge_protocol::RiskLevel> {
 
 fn open(path: &PathBuf) -> Result<CodeForgeEngine> {
     CodeForgeEngine::open(path).with_context(|| format!("cannot open {}", path.display()))
+}
+
+fn resolve_cli_path(root: &std::path::Path, path: &std::path::Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else if root.join(path).exists() {
+        root.join(path)
+    } else if let Ok(current_dir) = std::env::current_dir() {
+        current_dir.join(path)
+    } else {
+        root.join(path)
+    }
 }
 
 fn review_options(args: &CommonArgs) -> ReviewOptions {

@@ -3,6 +3,7 @@
 mod cache;
 mod config;
 mod detect;
+mod doctor;
 mod evidence;
 mod pr;
 mod runner;
@@ -15,6 +16,7 @@ pub use config::{
     FleetConfig, FleetPolicy, FleetSection, ProtectedPaths, ResolvedRepository, is_generated,
 };
 pub use detect::{DetectedWorkspace, ProjectDetector, suggest_codeforge_toml};
+pub use doctor::{Doctor, DoctorReport};
 pub use evidence::{EvidenceInput, EvidenceSnapshot, EvidenceWriter, WrittenEvidence};
 pub use pr::{PrManager, PrMode, PrOutcome};
 pub use runner::{

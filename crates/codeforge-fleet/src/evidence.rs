@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use codeforge_protocol::{
-    BenchmarkResult, Diagnostic, EvidenceBundle, Patch, RiskLevel, TransformationClass,
-    VerificationEvidence, VerificationResult, diagnostics_to_sarif,
+    BenchmarkResult, Diagnostic, EvidenceBundle, Patch, RiskLevel, ToolchainSnapshot,
+    TransformationClass, VerificationEvidence, VerificationResult, diagnostics_to_sarif,
 };
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +32,7 @@ pub struct EvidenceInput {
     pub diagnostics: Vec<Diagnostic>,
     pub before_snapshot: EvidenceSnapshot,
     pub after_snapshot: EvidenceSnapshot,
+    pub toolchain: ToolchainSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +44,7 @@ pub struct WrittenEvidence {
     pub patch_diff: PathBuf,
     pub before_json: PathBuf,
     pub after_json: PathBuf,
+    pub tools_json: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,7 @@ impl EvidenceWriter {
             benchmark: input.benchmark.clone(),
             patch: input.patch.clone(),
             report_dir: report_dir.clone(),
+            toolchain: input.toolchain.clone(),
         };
 
         let report_markdown = report_dir.join("report.md");
@@ -80,6 +83,7 @@ impl EvidenceWriter {
         let patch_diff = report_dir.join("patch.diff");
         let before_json = report_dir.join("before.json");
         let after_json = report_dir.join("after.json");
+        let tools_json = report_dir.join("tools.json");
 
         atomic_write(
             &report_markdown,
@@ -119,6 +123,10 @@ impl EvidenceWriter {
             &after_json,
             serde_json::to_vec_pretty(&input.after_snapshot)?.as_slice(),
         )?;
+        atomic_write(
+            &tools_json,
+            serde_json::to_vec_pretty(&input.toolchain)?.as_slice(),
+        )?;
 
         Ok(WrittenEvidence {
             bundle,
@@ -128,6 +136,7 @@ impl EvidenceWriter {
             patch_diff,
             before_json,
             after_json,
+            tools_json,
         })
     }
 
@@ -303,11 +312,13 @@ mod tests {
                 diagnostics: Vec::new(),
                 before_snapshot: snapshot.clone(),
                 after_snapshot: snapshot,
+                toolchain: ToolchainSnapshot::default(),
             })
             .expect("evidence");
         assert_eq!(written.bundle.evidence.tested, VerificationStatus::Passed);
         assert!(written.report_markdown.is_file());
         assert!(written.sarif.is_file());
         assert!(written.patch_diff.is_file());
+        assert!(written.tools_json.is_file());
     }
 }

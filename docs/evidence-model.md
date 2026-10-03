@@ -29,6 +29,7 @@ A repository transaction writes:
   patch.diff
   before.json
   after.json
+  tools.json
 ```
 
 Fleet reports default to the configured report directory and use one
@@ -46,3 +47,7 @@ five by default. Without real measurements, CodeForge reports `refactored`, not
 
 Reports do not include secret values, API keys, environment secrets, usernames,
 home directories, or machine identifiers.
+
+`tools.json` records the toolchain snapshot used for evidence collection:
+detected tools, versions, normalized executable paths, capabilities, and
+install hints for missing tools.

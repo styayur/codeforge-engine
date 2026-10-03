@@ -18,7 +18,9 @@ CodeForge is not a unified cross-language AST and not a GUI wrapper around six l
 
 CodeForge can review one workspace or orchestrate verified transformations across a repository fleet. Fleet runs keep one independent transaction per repository and emit evidence for every change.
 
-The current `v0.2.0` is a verification-driven repository fleet refactoring preview. It ships a desktop workbench, CLI, fleet configuration and scheduler, built-in adapters for the original six language families plus Dart/Flutter, PowerShell, Markdown, and configuration formats, transactional preview/apply/undo, evidence bundles, SARIF, structured external-process execution, local tool discovery, and verification/benchmark pipelines. Optional tools are discovered from the local machine and degrade to `unavailable` when missing.
+The current `v0.2.1` is a precision and baseline maintenance release for the verification-driven repository fleet runtime. It adds reviewed finding dispositions, stable fingerprints, regression-only CI, separate tool-gap reporting, a local toolchain doctor, source-context classification, native diagnostic provenance, and targeted precision fixes for TOML and Rust rules.
+
+CodeForge does not aim for zero findings. A reviewed baseline lets CI distinguish known debt from new regressions. Known does not mean ignored: accepted findings remain visible and auditable.
 
 ## Core capabilities
 
@@ -32,6 +34,7 @@ The current `v0.2.0` is a verification-driven repository fleet refactoring previ
 - SARIF 2.1.0 export from unified diagnostics.
 - Local-only defaults: no telemetry, no source upload, no cloud dependency, AI disabled.
 - Repository fleet configuration, independent repository transactions, partial-success reporting, and per-repository evidence bundles.
+- Reviewed `.codeforge/baseline.json` with exact, structural, and context-relocated finding matching.
 
 ## Supported languages
 
@@ -80,6 +83,7 @@ Key Rust crates:
 | Crate | Responsibility |
 |---|---|
 | `codeforge-protocol` | Stable JSON contracts and SARIF mapping |
+| `codeforge-baseline` | Stable fingerprints, reviewed baseline lifecycle, and regression classification |
 | `codeforge-workspace` | Indexing, hashing, markers, language detection |
 | `codeforge-scheduler` | Priority queue, timeout, cancellation, debouncing |
 | `codeforge-diagnostics` | Deduplication, severity normalization, source merging |
@@ -140,6 +144,9 @@ codeforge refactor .
 codeforge optimize .
 codeforge verify .
 codeforge benchmark . --samples 5
+codeforge doctor
+codeforge baseline show --file .codeforge/baseline.json
+codeforge ci --changed --baseline .codeforge/baseline.json --fail-on new
 codeforge beautify .
 codeforge ci --changed --sarif codeforge.sarif
 codeforge fleet audit --config fleet.toml
@@ -204,7 +211,7 @@ Plugins are declarative first. A manifest declares identity, languages, capabili
 ```toml
 id = "example-engine"
 name = "Example Engine"
-version = "0.2.0"
+version = "0.2.1"
 kind = "local_executable"
 languages = ["python"]
 capabilities = ["lint", "fix"]

@@ -4,7 +4,9 @@ use codeforge_fleet::{
     EvidenceInput, EvidenceSnapshot, EvidenceWriter, FleetCommand, FleetConfig, FleetRunOptions,
     FleetRunner, ProjectDetector,
 };
-use codeforge_protocol::{RiskLevel, TransformationClass, VerificationCheck, VerificationResult};
+use codeforge_protocol::{
+    RiskLevel, ToolchainSnapshot, TransformationClass, VerificationCheck, VerificationResult,
+};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 fn fleet_benchmarks(criterion: &mut Criterion) {
@@ -60,6 +62,7 @@ fn fleet_benchmarks(criterion: &mut Criterion) {
                     diagnostics: Vec::new(),
                     before_snapshot: snapshot.clone(),
                     after_snapshot: snapshot.clone(),
+                    toolchain: ToolchainSnapshot::default(),
                 })
                 .expect("report generation");
         });

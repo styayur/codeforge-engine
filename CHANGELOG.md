@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.1 - 2026-10-03
+
+Precision and baseline maintenance release.
+
+### Added
+
+- Native `.codeforge/baseline.json` with reviewed dispositions and migration from Fleet baseline JSON.
+- Stable exact, structural, and context-relocated finding fingerprints.
+- Regression-only CI classification for new, known accepted, known false-positive, human-review, resolved, stale, and ambiguous findings.
+- Separate execution status, finding status, source findings, tool gaps, verification failures, and configuration failures.
+- `codeforge doctor` and `codeforge fleet doctor` with install hints and read-only toolchain snapshots.
+- `tools.json` in evidence bundles.
+- Source-context classification and native diagnostic provenance.
+- Native machine-readable parsers for Clippy, Ruff, Dart analyze, and PSScriptAnalyzer.
+- Precision regression fixtures and baseline lifecycle tests.
+
+### Fixed
+
+- TOML validation now respects real TOML table scope and no longer reports valid repeated keys across tables.
+- Rust test and fixture findings are downgraded without blanket suppression.
+- Unsafe Rust findings distinguish documented safety boundaries from unjustified unsafe blocks.
+
 ## v0.2.0 - 2026-10-02
 
 Verification-driven repository fleet refactoring preview.

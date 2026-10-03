@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,8 +8,8 @@ use codeforge_core::{CodeForgeEngine, ReviewOptions};
 use codeforge_git::GitRepository;
 use codeforge_protocol::{
     FileEdit, FleetRunSummary, Language, Patch, ProjectProfile, RepoRunStatus, RepoRunSummary,
-    RiskLevel, SourceRange, TextEdit, Transformation, TransformationClass, VerificationResult,
-    VerificationStatus,
+    RiskLevel, SourceRange, TextEdit, ToolGap, ToolchainSnapshot, Transformation,
+    TransformationClass, VerificationResult, VerificationStatus,
 };
 use codeforge_transform::{ApplyOptions, PreparedChange, TransactionManager};
 use sha2::Digest;
@@ -18,6 +19,7 @@ use crate::FleetError;
 use crate::cache::{CacheKey, FleetCache};
 use crate::config::{FleetConfig, ResolvedRepository, is_generated};
 use crate::detect::ProjectDetector;
+use crate::doctor::Doctor;
 use crate::evidence::{EvidenceInput, EvidenceSnapshot, EvidenceWriter};
 use crate::pr::{PrManager, PrMode};
 use crate::tools::{ToolContext, ToolOperation, ToolRegistry, ToolRunner};
@@ -92,6 +94,7 @@ pub struct RepoExecutionContext {
     pub config: FleetConfig,
     pub options: FleetRunOptions,
     pub tools: Arc<ToolRegistry>,
+    pub toolchain: ToolchainSnapshot,
 }
 
 #[async_trait]
@@ -136,6 +139,9 @@ impl FleetRunner {
         let tools = Arc::new(ToolRegistry::with_all_builtins(
             &self.config.resolved_workspace_root,
         ));
+        let toolchain = Doctor::scan(&self.config.resolved_workspace_root)
+            .await
+            .snapshot;
         let concurrency = self
             .config
             .fleet
@@ -164,7 +170,7 @@ impl FleetRunner {
                         git.head_commit().await.ok(),
                         config_hash.clone(),
                         env!("CARGO_PKG_VERSION"),
-                        "rules-v0.2",
+                        "rules-v0.2.1",
                     ))
                 } else {
                     None
@@ -179,6 +185,7 @@ impl FleetRunner {
                 config: self.config.clone(),
                 options: options.clone(),
                 tools: tools.clone(),
+                toolchain: toolchain.clone(),
             };
             let executor = executor.clone();
             let semaphore = semaphore.clone();
@@ -194,7 +201,24 @@ impl FleetRunner {
                     cached.message = format!("cache hit; {}", cached.message);
                     return Ok(cached);
                 }
-                let summary = executor.execute(context).await?;
+                let mut summary = executor.execute(context.clone()).await?;
+                summary.source_findings = summary.source_findings.max(summary.findings);
+                if summary.tool_gaps.is_empty() {
+                    summary.tool_gaps = missing_tool_gaps(&context, &summary.languages);
+                }
+                if !summary.tool_gaps.is_empty()
+                    && matches!(
+                        summary.status,
+                        RepoRunStatus::Success | RepoRunStatus::Findings
+                    )
+                {
+                    summary.status = RepoRunStatus::PartialSuccess;
+                }
+                summary.finding_status = if summary.source_findings == 0 {
+                    codeforge_protocol::FindingStatus::Clean
+                } else {
+                    codeforge_protocol::FindingStatus::Findings
+                };
                 if let Some(key) = cache_key {
                     let mut cache = cache.lock().await;
                     cache.insert(key, summary.clone());
@@ -223,6 +247,45 @@ impl FleetRunner {
         write_run_summary(&report_dir, &summary)?;
         Ok(summary)
     }
+}
+
+fn missing_tool_gaps(context: &RepoExecutionContext, languages: &[Language]) -> Vec<ToolGap> {
+    let missing = context
+        .toolchain
+        .entries
+        .iter()
+        .filter(|entry| !entry.detected)
+        .map(|entry| entry.tool.as_str())
+        .collect::<BTreeSet<_>>();
+    context
+        .tools
+        .descriptors()
+        .into_iter()
+        .filter(|descriptor| {
+            !descriptor.available
+                && missing.contains(descriptor.id.as_str())
+                && descriptor
+                    .languages
+                    .iter()
+                    .any(|language| languages.contains(language))
+        })
+        .map(|descriptor| ToolGap {
+            tool: descriptor.id.clone(),
+            required_for: descriptor
+                .languages
+                .iter()
+                .map(|language| language.display_name())
+                .collect::<Vec<_>>()
+                .join(", "),
+            status: "missing".to_owned(),
+            reason: descriptor.reason.clone(),
+            install_hint: Some(format!(
+                "Install the local tool required by {}, then rerun `codeforge doctor`.",
+                descriptor.name
+            )),
+            repository: Some(context.repository.name.clone()),
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -263,7 +326,7 @@ async fn audit(
             include_external: include_external || context.options.include_external,
         })
         .await?;
-    let diagnostics = review.diagnostics;
+    let diagnostics = filter_unavailable_heuristic_diagnostics(review.diagnostics, &context);
     let branch = git_branch(&context.repository.path);
     let commit = git_commit(&context.repository.path);
     let verification = VerificationResult::default();
@@ -288,6 +351,7 @@ async fn audit(
         diagnostics: diagnostics.clone(),
         before_snapshot: snapshot.clone(),
         after_snapshot: snapshot,
+        toolchain: context.toolchain.clone(),
     })?;
     Ok(RepoRunSummary {
         repository: context.repository.name,
@@ -300,6 +364,15 @@ async fn audit(
         languages: detected.profile.languages.clone(),
         project_profile: Some(detected.profile),
         findings: diagnostics.len(),
+        source_findings: diagnostics.len(),
+        tool_gaps: Vec::new(),
+        verification_failures: 0,
+        configuration_failures: 0,
+        finding_status: if diagnostics.is_empty() {
+            codeforge_protocol::FindingStatus::Clean
+        } else {
+            codeforge_protocol::FindingStatus::Findings
+        },
         pending_transformations: 0,
         risk: RiskLevel::Low,
         verification: Some(verification),
@@ -311,6 +384,38 @@ async fn audit(
             format!("audit completed with {} findings", diagnostics.len())
         },
     })
+}
+
+fn filter_unavailable_heuristic_diagnostics(
+    diagnostics: Vec<codeforge_protocol::Diagnostic>,
+    context: &RepoExecutionContext,
+) -> Vec<codeforge_protocol::Diagnostic> {
+    let missing = context
+        .toolchain
+        .entries
+        .iter()
+        .filter(|entry| !entry.detected)
+        .map(|entry| entry.tool.as_str())
+        .collect::<BTreeSet<_>>();
+    diagnostics
+        .into_iter()
+        .filter(|diagnostic| {
+            let unavailable_heuristic = match diagnostic.language {
+                Language::Dart => {
+                    missing.contains("dart-analyze")
+                        && (diagnostic.rule_id.starts_with("CF-DART-")
+                            || diagnostic.rule_id == "PARSE-001")
+                }
+                Language::PowerShell => {
+                    missing.contains("psscriptanalyzer")
+                        && (diagnostic.rule_id.starts_with("CF-PS-")
+                            || diagnostic.rule_id == "PARSE-001")
+                }
+                _ => false,
+            };
+            !unavailable_heuristic
+        })
+        .collect()
 }
 
 async fn verify(context: RepoExecutionContext) -> Result<RepoRunSummary, FleetError> {
@@ -434,6 +539,11 @@ async fn transform_format(context: RepoExecutionContext) -> Result<RepoRunSummar
             languages: detected.profile.languages.clone(),
             project_profile: Some(detected.profile),
             findings: 0,
+            source_findings: 0,
+            tool_gaps: Vec::new(),
+            verification_failures: 0,
+            configuration_failures: 0,
+            finding_status: codeforge_protocol::FindingStatus::Clean,
             pending_transformations: 0,
             risk: RiskLevel::Low,
             verification: None,
@@ -490,6 +600,11 @@ async fn run_formatter_pipeline(
             languages: profile.languages.clone(),
             project_profile: Some(profile),
             findings: 0,
+            source_findings: 0,
+            tool_gaps: Vec::new(),
+            verification_failures: 0,
+            configuration_failures: 0,
+            finding_status: codeforge_protocol::FindingStatus::Clean,
             pending_transformations: 0,
             risk: RiskLevel::Low,
             verification: None,
@@ -625,6 +740,11 @@ async fn run_formatter_pipeline(
         languages: profile.languages.clone(),
         project_profile: Some(profile),
         findings: diagnostics.len(),
+        source_findings: diagnostics.len(),
+        tool_gaps: Vec::new(),
+        verification_failures: 0,
+        configuration_failures: 0,
+        finding_status: codeforge_protocol::FindingStatus::Findings,
         pending_transformations: source_preview.patch.files.len(),
         risk: RiskLevel::Low,
         verification: Some(sandbox_verification),
@@ -647,6 +767,15 @@ async fn transform_refactor(context: RepoExecutionContext) -> Result<RepoRunSumm
             languages: detected.profile.languages.clone(),
             project_profile: Some(detected.profile),
             findings: diagnostics.len(),
+            source_findings: diagnostics.len(),
+            tool_gaps: Vec::new(),
+            verification_failures: 0,
+            configuration_failures: 0,
+            finding_status: if diagnostics.is_empty() {
+                codeforge_protocol::FindingStatus::Clean
+            } else {
+                codeforge_protocol::FindingStatus::Findings
+            },
             pending_transformations: 0,
             risk: context.options.risk,
             verification: None,
@@ -800,6 +929,11 @@ async fn transform_refactor(context: RepoExecutionContext) -> Result<RepoRunSumm
         languages: detected.profile.languages.clone(),
         project_profile: Some(detected.profile),
         findings: diagnostics.len(),
+        source_findings: diagnostics.len(),
+        tool_gaps: Vec::new(),
+        verification_failures: usize::from(status == RepoRunStatus::VerificationFailure),
+        configuration_failures: 0,
+        finding_status: codeforge_protocol::FindingStatus::Findings,
         pending_transformations: source_preview.patch.files.len(),
         risk: classes
             .iter()
@@ -832,6 +966,15 @@ fn summary_with_evidence(
         languages: profile.languages.clone(),
         project_profile: Some(profile),
         findings,
+        source_findings: findings,
+        tool_gaps: Vec::new(),
+        verification_failures: usize::from(status == RepoRunStatus::VerificationFailure),
+        configuration_failures: usize::from(status == RepoRunStatus::ConfigurationFailure),
+        finding_status: if findings == 0 {
+            codeforge_protocol::FindingStatus::Clean
+        } else {
+            codeforge_protocol::FindingStatus::Findings
+        },
         pending_transformations: pending,
         risk,
         verification: Some(verification),
@@ -854,6 +997,11 @@ fn policy_refusal(
         languages: profile.languages.clone(),
         project_profile: Some(profile),
         findings: 0,
+        source_findings: 0,
+        tool_gaps: Vec::new(),
+        verification_failures: 0,
+        configuration_failures: 0,
+        finding_status: codeforge_protocol::FindingStatus::Clean,
         pending_transformations: 0,
         risk: RiskLevel::Low,
         verification: None,
@@ -1175,6 +1323,7 @@ fn write_evidence(
         diagnostics,
         before_snapshot,
         after_snapshot,
+        toolchain: context.toolchain.clone(),
     })
 }
 
@@ -1254,6 +1403,11 @@ fn error_summary(error: FleetError) -> RepoRunSummary {
         languages: Vec::new(),
         project_profile: None,
         findings: 0,
+        source_findings: 0,
+        tool_gaps: Vec::new(),
+        verification_failures: 0,
+        configuration_failures: 0,
+        finding_status: codeforge_protocol::FindingStatus::Clean,
         pending_transformations: 0,
         risk: RiskLevel::High,
         verification: None,
@@ -1334,6 +1488,11 @@ repositories = ["success", "verification-failure", "missing-tool"]
                 languages: vec![Language::Rust],
                 project_profile: None,
                 findings: 0,
+                source_findings: 0,
+                tool_gaps: Vec::new(),
+                verification_failures: usize::from(status == RepoRunStatus::VerificationFailure),
+                configuration_failures: 0,
+                finding_status: codeforge_protocol::FindingStatus::Clean,
                 pending_transformations: 0,
                 risk: RiskLevel::Low,
                 verification: None,

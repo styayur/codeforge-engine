@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   BenchmarkSnapshot,
+  Diagnostic,
   FleetRunSummary,
   FixPreviewResponse,
   OptimizationReport,
@@ -51,5 +52,7 @@ export const api = {
   optimize: () => command<OptimizationReport>("run_optimization"),
   benchmark: (samples = 5) => command<BenchmarkSnapshot>("run_benchmark", { samples }),
   runFleet: (fleetCommand: string, configPath: string, risk = "medium") =>
-    command<FleetRunSummary>("run_fleet", { command: fleetCommand, configPath, risk })
+    command<FleetRunSummary>("run_fleet", { command: fleetCommand, configPath, risk }),
+  saveDisposition: (diagnostic: Diagnostic, disposition: string, reason?: string) =>
+    command<unknown>("save_finding_disposition", { diagnostic, disposition, reason })
 };

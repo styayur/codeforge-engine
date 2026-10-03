@@ -1,0 +1,5 @@
+[custom.schema]
+enabled = true
+
+[custom.unknown]
+value = "allowed"

@@ -15,7 +15,7 @@ use codeforge_engines::{EngineRegistry, EngineRequest, find_executable};
 use codeforge_git::GitRepository;
 use codeforge_protocol::{
     BenchmarkResult, Confidence, Diagnostic, DiagnosticCategory, EngineStatus, FileEdit, Language,
-    Patch, SourceRange, TextEdit, TimingSummary, Transformation, VerificationCheck,
+    Patch, SourceContext, SourceRange, TextEdit, TimingSummary, Transformation, VerificationCheck,
     VerificationResult, VerificationStatus, WorkspaceSummary,
 };
 use codeforge_transform::{ApplyOptions, PreparedChange, TransactionManager, TransformError};
@@ -155,6 +155,21 @@ impl CodeForgeEngine {
     }
 
     pub async fn review(&self, options: ReviewOptions) -> Result<ReviewReport, CoreError> {
+        self.review_with_policy(options, false).await
+    }
+
+    pub async fn review_including_non_production(
+        &self,
+        options: ReviewOptions,
+    ) -> Result<ReviewReport, CoreError> {
+        self.review_with_policy(options, true).await
+    }
+
+    async fn review_with_policy(
+        &self,
+        options: ReviewOptions,
+        include_non_production: bool,
+    ) -> Result<ReviewReport, CoreError> {
         let started = Instant::now();
         let selected_languages = if options.languages.is_empty() {
             self.workspace
@@ -180,9 +195,17 @@ impl CodeForgeEngine {
         }
         output.diagnostics.append(&mut reused_diagnostics);
 
-        let diagnostics = DiagnosticsAggregator::new()
+        let mut diagnostics = DiagnosticsAggregator::new()
             .tap(|aggregator| aggregator.extend(output.diagnostics))
             .aggregate();
+        if !include_non_production {
+            diagnostics.retain(|diagnostic| {
+                !matches!(
+                    diagnostic.source_context,
+                    SourceContext::Fixture | SourceContext::Generated | SourceContext::Vendor
+                )
+            });
+        }
         self.update_analysis_cache(&files, &content_hashes, &diagnostics);
         let engines_used = diagnostics
             .iter()
@@ -863,7 +886,7 @@ fn parse_ruff_json(output: &str, root: &Path) -> Vec<Diagnostic> {
             let mut diagnostic = Diagnostic::new(
                 "ruff",
                 Language::Python,
-                rule_id,
+                rule_id.clone(),
                 severity,
                 category,
                 Confidence::High,
@@ -872,7 +895,12 @@ fn parse_ruff_json(output: &str, root: &Path) -> Vec<Diagnostic> {
                 item.get("message")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("Ruff diagnostic"),
-            );
+            )
+            .with_native_rule(rule_id)
+            .with_source_context(SourceContext::classify(
+                &path,
+                source.as_deref().unwrap_or_default(),
+            ));
             if let Some(explanation) = item.get("url").and_then(serde_json::Value::as_str) {
                 diagnostic = diagnostic.with_explanation(explanation);
             }
@@ -1006,25 +1034,30 @@ fn parse_clippy_json(output: &str, root: &Path, allowed: &HashSet<PathBuf>) -> V
             .and_then(serde_json::Value::as_str)
             .unwrap_or("clippy")
             .to_owned();
-        diagnostics.push(Diagnostic::new(
-            "clippy",
-            Language::Rust,
-            rule_id,
-            normalize_severity(
+        let source = std::fs::read_to_string(&path).unwrap_or_default();
+        diagnostics.push(
+            Diagnostic::new(
+                "clippy",
+                Language::Rust,
+                rule_id.clone(),
+                normalize_severity(
+                    message
+                        .get("level")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("warning"),
+                ),
+                DiagnosticCategory::Correctness,
+                Confidence::High,
+                path.clone(),
+                range,
                 message
-                    .get("level")
+                    .get("message")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("warning"),
-            ),
-            DiagnosticCategory::Correctness,
-            Confidence::High,
-            path,
-            range,
-            message
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("Clippy diagnostic"),
-        ));
+                    .unwrap_or("Clippy diagnostic"),
+            )
+            .with_native_rule(rule_id)
+            .with_source_context(SourceContext::classify(&path, &source)),
+        );
     }
     diagnostics
 }

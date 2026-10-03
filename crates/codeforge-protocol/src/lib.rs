@@ -236,6 +236,157 @@ pub enum Confidence {
     High,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceContext {
+    #[default]
+    Production,
+    Test,
+    Benchmark,
+    Fixture,
+    Generated,
+    BuildScript,
+    Config,
+    Vendor,
+}
+
+impl SourceContext {
+    pub fn classify(path: &Path, source: &str) -> Self {
+        Self::classify_at(path, source, source.len())
+    }
+
+    pub fn classify_at(path: &Path, source: &str, offset: usize) -> Self {
+        let normalized = path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        if normalized.contains("/vendor/") || normalized.contains("/third_party/") {
+            return Self::Vendor;
+        }
+        if normalized.contains("/generated/") || normalized.ends_with(".g.dart") {
+            return Self::Generated;
+        }
+        if normalized.contains("/windows/runner/")
+            || normalized.contains("/linux/runner/")
+            || normalized.contains("/macos/runner/")
+            || normalized.contains("/flutter/")
+            || normalized.contains("generated_plugin_registrant")
+        {
+            return Self::Generated;
+        }
+        if normalized.contains("/fixtures/") || normalized.contains("/fixture/") {
+            return Self::Fixture;
+        }
+        if normalized.contains("/benches/")
+            || normalized.contains("/benchmarks/")
+            || normalized.contains("/bench/")
+        {
+            return Self::Benchmark;
+        }
+        if normalized.contains("/tests/")
+            || normalized.contains("/test/")
+            || normalized.ends_with("_test.rs")
+            || normalized.ends_with("_tests.rs")
+            || normalized.ends_with("tests.rs")
+            || normalized.ends_with(".test.ts")
+            || normalized.ends_with(".test.tsx")
+            || normalized.ends_with(".test.js")
+        {
+            return Self::Test;
+        }
+        let prefix = &source[..offset.min(source.len())];
+        if prefix.contains("#[cfg(test)]") || prefix.contains("mod tests") {
+            return Self::Test;
+        }
+        if normalized.ends_with("build.rs") || normalized.ends_with("build.gradle") {
+            return Self::BuildScript;
+        }
+        if matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("toml" | "json" | "jsonc" | "yaml" | "yml")
+        ) {
+            return Self::Config;
+        }
+        Self::Production
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingDisposition {
+    #[default]
+    Unreviewed,
+    Accepted,
+    FalsePositive,
+    HumanReview,
+    Fixed,
+}
+
+impl FindingDisposition {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unreviewed => "unreviewed",
+            Self::Accepted => "accepted",
+            Self::FalsePositive => "false_positive",
+            Self::HumanReview => "human_review",
+            Self::Fixed => "fixed",
+        }
+    }
+
+    pub const fn requires_reason(self) -> bool {
+        matches!(self, Self::Accepted | Self::FalsePositive)
+    }
+}
+
+impl fmt::Display for FindingDisposition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingLifecycle {
+    #[default]
+    Active,
+    Stale,
+    Resolved,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BaselineMatchKind {
+    New,
+    Exact,
+    Structural,
+    ContextRelocated,
+    Ambiguous,
+    #[default]
+    Known,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    Complete,
+    Partial,
+    #[default]
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingStatus {
+    #[default]
+    Clean,
+    Findings,
+    NewRegressions,
+    Ambiguous,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
@@ -428,6 +579,26 @@ pub struct Diagnostic {
     pub safe_fix_available: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_rule_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codeforge_rule_id: Option<String>,
+    #[serde(default)]
+    pub source_context: SourceContext,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_version: Option<String>,
+    #[serde(default)]
+    pub disposition: FindingDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disposition_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
 }
 
 impl Diagnostic {
@@ -443,9 +614,10 @@ impl Diagnostic {
         range: SourceRange,
         message: impl Into<String>,
     ) -> Self {
+        let engine = engine.into();
         Self {
             id: Uuid::new_v4().to_string(),
-            engine: engine.into(),
+            engine: engine.clone(),
             language,
             rule_id: rule_id.into(),
             severity,
@@ -461,6 +633,16 @@ impl Diagnostic {
             transformation_class: None,
             safe_fix_available: false,
             evidence: Vec::new(),
+            producer: Some(engine),
+            producer_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            native_rule_id: None,
+            codeforge_rule_id: None,
+            source_context: SourceContext::Production,
+            symbol: None,
+            rule_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            disposition: FindingDisposition::Unreviewed,
+            disposition_reason: None,
+            reviewed_at: None,
         }
     }
 
@@ -477,6 +659,42 @@ impl Diagnostic {
 
     pub fn with_evidence(mut self, evidence: impl Into<String>) -> Self {
         self.evidence.push(evidence.into());
+        self
+    }
+
+    pub fn with_native_rule(mut self, rule_id: impl Into<String>) -> Self {
+        self.native_rule_id = Some(rule_id.into());
+        self
+    }
+
+    pub fn with_codeforge_rule(mut self, rule_id: impl Into<String>) -> Self {
+        self.codeforge_rule_id = Some(rule_id.into());
+        self
+    }
+
+    pub fn with_codeforge_rule_placeholder(mut self) -> Self {
+        self.codeforge_rule_id = Some(self.rule_id.clone());
+        self
+    }
+
+    pub fn with_source_context(mut self, context: SourceContext) -> Self {
+        self.source_context = context;
+        self
+    }
+
+    pub fn with_symbol(mut self, symbol: impl Into<String>) -> Self {
+        self.symbol = Some(symbol.into());
+        self
+    }
+
+    pub fn with_disposition(
+        mut self,
+        disposition: FindingDisposition,
+        reason: Option<String>,
+    ) -> Self {
+        self.disposition = disposition;
+        self.disposition_reason = reason;
+        self.reviewed_at = Some(Utc::now());
         self
     }
 
@@ -974,6 +1192,121 @@ pub struct ToolAdapterDescriptor {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolGap {
+    pub tool: String,
+    pub required_for: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolchainEntry {
+    pub tool: String,
+    pub required_for: String,
+    pub detected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub capabilities: ToolCapability,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolchainSnapshot {
+    pub captured_at: DateTime<Utc>,
+    pub entries: Vec<ToolchainEntry>,
+}
+
+impl Default for ToolchainSnapshot {
+    fn default() -> Self {
+        Self {
+            captured_at: Utc::now(),
+            entries: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineEntry {
+    pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structural_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_fingerprint: Option<String>,
+    pub rule_id: String,
+    pub path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_hash: Option<String>,
+    #[serde(default)]
+    pub source_context: SourceContext,
+    pub disposition: FindingDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub first_seen: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reviewed: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_version: Option<String>,
+    #[serde(default)]
+    pub lifecycle: FindingLifecycle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineFile {
+    pub schema_version: u32,
+    pub codeforge_version: String,
+    #[serde(default)]
+    pub entries: Vec<BaselineEntry>,
+}
+
+impl Default for BaselineFile {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            codeforge_version: env!("CARGO_PKG_VERSION").to_owned(),
+            entries: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineComparisonEntry {
+    pub fingerprint: String,
+    pub rule_id: String,
+    pub path: PathBuf,
+    pub disposition: FindingDisposition,
+    pub lifecycle: FindingLifecycle,
+    pub match_kind: BaselineMatchKind,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineComparison {
+    pub new: Vec<BaselineComparisonEntry>,
+    pub known_accepted: Vec<BaselineComparisonEntry>,
+    pub known_false_positive: Vec<BaselineComparisonEntry>,
+    pub human_review: Vec<BaselineComparisonEntry>,
+    pub resolved: Vec<BaselineComparisonEntry>,
+    pub stale: Vec<BaselineComparisonEntry>,
+    pub ambiguous: Vec<BaselineComparisonEntry>,
+}
+
+impl BaselineComparison {
+    pub fn is_clean(&self, fail_on_new: bool) -> bool {
+        !fail_on_new || self.new.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EvidenceBundle {
     pub id: String,
@@ -993,6 +1326,14 @@ pub struct EvidenceBundle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch: Option<Patch>,
     pub report_dir: PathBuf,
+    #[serde(default, skip_serializing_if = "ToolchainSnapshot::is_empty")]
+    pub toolchain: ToolchainSnapshot,
+}
+
+impl ToolchainSnapshot {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1037,6 +1378,16 @@ pub struct RepoRunSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_path: Option<PathBuf>,
     pub message: String,
+    #[serde(default)]
+    pub source_findings: usize,
+    #[serde(default)]
+    pub tool_gaps: Vec<ToolGap>,
+    #[serde(default)]
+    pub verification_failures: usize,
+    #[serde(default)]
+    pub configuration_failures: usize,
+    #[serde(default)]
+    pub finding_status: FindingStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1048,6 +1399,20 @@ pub struct FleetRunSummary {
     pub finished_at: DateTime<Utc>,
     pub repositories: Vec<RepoRunSummary>,
     pub report_dir: PathBuf,
+    #[serde(default)]
+    pub execution_status: ExecutionStatus,
+    #[serde(default)]
+    pub finding_status: FindingStatus,
+    #[serde(default)]
+    pub source_findings: usize,
+    #[serde(default)]
+    pub tool_gaps: Vec<ToolGap>,
+    #[serde(default)]
+    pub verification_failures: usize,
+    #[serde(default)]
+    pub configuration_failures: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_comparison: Option<BaselineComparison>,
 }
 
 impl FleetRunSummary {
@@ -1058,6 +1423,54 @@ impl FleetRunSummary {
         report_dir: PathBuf,
         repositories: Vec<RepoRunSummary>,
     ) -> Self {
+        let source_findings = repositories
+            .iter()
+            .map(|repository| repository.source_findings.max(repository.findings))
+            .sum();
+        let tool_gaps = repositories
+            .iter()
+            .flat_map(|repository| repository.tool_gaps.clone())
+            .collect::<Vec<_>>();
+        let verification_failures = repositories
+            .iter()
+            .map(|repository| repository.verification_failures)
+            .sum();
+        let configuration_failures = repositories
+            .iter()
+            .map(|repository| repository.configuration_failures)
+            .sum();
+        let healthy = repositories
+            .iter()
+            .filter(|repository| {
+                matches!(
+                    repository.status,
+                    RepoRunStatus::Success | RepoRunStatus::Findings
+                )
+            })
+            .count();
+        let failed = repositories
+            .iter()
+            .filter(|repository| {
+                matches!(
+                    repository.status,
+                    RepoRunStatus::ConfigurationFailure
+                        | RepoRunStatus::TransformationFailure
+                        | RepoRunStatus::SafetyRefusal
+                )
+            })
+            .count();
+        let execution_status = if failed == repositories.len() {
+            ExecutionStatus::Failed
+        } else if healthy == repositories.len() {
+            ExecutionStatus::Complete
+        } else {
+            ExecutionStatus::Partial
+        };
+        let finding_status = if source_findings > 0 {
+            FindingStatus::Findings
+        } else {
+            FindingStatus::Clean
+        };
         let status = if repositories
             .iter()
             .all(|repository| repository.status == RepoRunStatus::Success)
@@ -1081,6 +1494,13 @@ impl FleetRunSummary {
             finished_at: Utc::now(),
             repositories,
             report_dir,
+            execution_status,
+            finding_status,
+            source_findings,
+            tool_gaps,
+            verification_failures,
+            configuration_failures,
+            baseline_comparison: None,
         }
     }
 }
@@ -1296,6 +1716,40 @@ pub fn diagnostics_to_sarif(diagnostics: &[Diagnostic]) -> SarifLog {
             "safeFixAvailable".to_owned(),
             serde_json::Value::Bool(diagnostic.safe_fix_available),
         );
+        properties.insert(
+            "sourceContext".to_owned(),
+            serde_json::Value::String(
+                format!("{:?}", diagnostic.source_context).to_ascii_lowercase(),
+            ),
+        );
+        properties.insert(
+            "disposition".to_owned(),
+            serde_json::Value::String(diagnostic.disposition.to_string()),
+        );
+        if let Some(producer) = &diagnostic.producer {
+            properties.insert(
+                "producer".to_owned(),
+                serde_json::Value::String(producer.clone()),
+            );
+        }
+        if let Some(producer_version) = &diagnostic.producer_version {
+            properties.insert(
+                "producerVersion".to_owned(),
+                serde_json::Value::String(producer_version.clone()),
+            );
+        }
+        if let Some(native_rule_id) = &diagnostic.native_rule_id {
+            properties.insert(
+                "nativeRuleId".to_owned(),
+                serde_json::Value::String(native_rule_id.clone()),
+            );
+        }
+        if let Some(codeforge_rule_id) = &diagnostic.codeforge_rule_id {
+            properties.insert(
+                "codeforgeRuleId".to_owned(),
+                serde_json::Value::String(codeforge_rule_id.clone()),
+            );
+        }
         if let Some(class) = diagnostic.transformation_class {
             properties.insert(
                 "transformationClass".to_owned(),
@@ -1493,5 +1947,46 @@ mod tests {
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].rule_id, "PY-001");
         assert_eq!(restored[0].language, Language::Python);
+    }
+
+    #[test]
+    fn execution_and_finding_status_are_separate() {
+        let repository = RepoRunSummary {
+            repository: "repo".to_owned(),
+            path: PathBuf::from("repo"),
+            status: RepoRunStatus::PartialSuccess,
+            languages: vec![Language::Rust],
+            project_profile: None,
+            findings: 3,
+            source_findings: 3,
+            tool_gaps: vec![ToolGap {
+                tool: "dart-analyze".to_owned(),
+                required_for: "Dart / Flutter lint/verify".to_owned(),
+                status: "missing".to_owned(),
+                reason: None,
+                install_hint: None,
+                repository: Some("repo".to_owned()),
+            }],
+            verification_failures: 0,
+            configuration_failures: 0,
+            finding_status: FindingStatus::Findings,
+            pending_transformations: 0,
+            risk: RiskLevel::Low,
+            verification: None,
+            evidence: None,
+            report_path: None,
+            message: String::new(),
+        };
+        let summary = FleetRunSummary::from_repositories(
+            "run",
+            "fleet",
+            Utc::now(),
+            PathBuf::from(".codeforge"),
+            vec![repository],
+        );
+        assert_eq!(summary.execution_status, ExecutionStatus::Partial);
+        assert_eq!(summary.finding_status, FindingStatus::Findings);
+        assert_eq!(summary.source_findings, 3);
+        assert_eq!(summary.tool_gaps.len(), 1);
     }
 }
