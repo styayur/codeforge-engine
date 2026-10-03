@@ -44,6 +44,7 @@ interface AppStore {
   runBenchmark: () => Promise<void>;
   chooseFleetConfig: () => Promise<void>;
   runFleet: (command: string) => Promise<void>;
+  saveDisposition: (disposition: string, reason?: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -196,6 +197,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ loading: true, error: undefined, view: "fleet" });
     try {
       set({ fleet: await api.runFleet(command, configPath) });
+    } catch (error) {
+      set({ error: message(error) });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  saveDisposition: async (disposition, reason) => {
+    const diagnostic = get().diagnostics.find((item) => item.id === get().selectedDiagnosticId);
+    if (!diagnostic) return;
+    set({ loading: true, error: undefined });
+    try {
+      await api.saveDisposition(diagnostic, disposition, reason);
     } catch (error) {
       set({ error: message(error) });
     } finally {

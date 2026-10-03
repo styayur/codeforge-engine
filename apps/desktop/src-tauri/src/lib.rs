@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use codeforge_baseline::BaselineStore;
 use codeforge_core::{
     BenchmarkSnapshot, CodeForgeEngine, FixPreview, OptimizationReport, ReviewOptions, ReviewReport,
 };
 use codeforge_fleet::{FleetCommand, FleetConfig, FleetRunOptions, FleetRunner};
 use codeforge_protocol::{
-    Diagnostic, EngineStatus, FleetRunSummary, Patch, RiskLevel, TransactionRecord,
-    VerificationResult, WorkspaceSummary,
+    BaselineEntry, Diagnostic, EngineStatus, FindingDisposition, FleetRunSummary, Patch, RiskLevel,
+    TransactionRecord, VerificationResult, WorkspaceSummary,
 };
 use serde::Serialize;
 use tauri::State;
@@ -222,6 +223,27 @@ async fn run_fleet(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn save_finding_disposition(
+    diagnostic: Diagnostic,
+    disposition: FindingDisposition,
+    reason: Option<String>,
+    state: State<'_, DesktopState>,
+) -> Result<BaselineEntry, String> {
+    let engine = current_engine(&state).await?;
+    let path = engine.root().join(".codeforge").join("baseline.json");
+    let mut store = if path.exists() {
+        BaselineStore::load(&path).map_err(|error| error.to_string())?
+    } else {
+        BaselineStore::new()
+    };
+    let entry = store
+        .review(&diagnostic, engine.root(), disposition, reason)
+        .map_err(|error| error.to_string())?;
+    store.save(&path).map_err(|error| error.to_string())?;
+    Ok(entry)
+}
+
 async fn current_engine(state: &State<'_, DesktopState>) -> Result<Arc<CodeForgeEngine>, String> {
     state
         .engine
@@ -247,6 +269,7 @@ pub fn run() {
             run_optimization,
             run_benchmark,
             run_fleet,
+            save_finding_disposition,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CodeForge desktop");
