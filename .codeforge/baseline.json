@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "codeforge_version": "0.2.1",
+  "entries": [
+    {
+      "fingerprint": "f7d5be137c42c922e583f0485bf0b554b3a153fc1578de4171de24fb19d54b00",
+      "structural_fingerprint": "f1424d6a7dbb0fdc6fac600d4ce2fc5df2337a74b30aabec10aeb34e54cd51b2",
+      "context_fingerprint": "5cc6f0712c36c2ffce0c5485ad9a5b63b92dcf65f44be1910f4f2a48a6aa3c59",
+      "rule_id": "PY-MAINTAINABILITY-001",
+      "path": "scripts/capture_screenshot.py",
+      "symbol": "print",
+      "context_hash": "a300b77cebd827cd68147eceede3b42336cb71a3330fc3fae8a3e10d4598d9db",
+      "source_context": "production",
+      "disposition": "accepted",
+      "reason": "CLI progress output is intentional.",
+      "first_seen": "2026-10-03T08:43:25.713735Z",
+      "last_reviewed": "2026-10-03T08:43:25.713748400Z",
+      "rule_version": "0.2.1",
+      "lifecycle": "active"
+    },
+    {
+      "fingerprint": "93483b38974279814372464eef73d76d64a0604ad191384c98f824847082d6e9",
+      "structural_fingerprint": "1bdce7a0c83da42003f53015f8a5600c42edd3e3b25554583f51f38e3964c34c",
+      "context_fingerprint": "62aa09fab38c76309901875f0674f2cee829fa4f325a2d7dabd0e74b5ece6cc8",
+      "rule_id": "RS-PERFORMANCE-001",
+      "path": "crates/codeforge-engines/src/builtin.rs",
+      "symbol": "binary_expression",
+      "context_hash": "bd7f3c3dea3148944422dfc3b1c90e1d3f9ec87ccb49921d9639de437a7893de",
+      "source_context": "production",
+      "disposition": "accepted",
+      "reason": "Rule-detector source text intentionally matches len()==0; changing it would change detection behavior.",
+      "first_seen": "2026-10-03T08:43:30.669390700Z",
+      "last_reviewed": "2026-10-03T08:43:30.669391200Z",
+      "rule_version": "0.2.1",
+      "lifecycle": "active"
+    }
+  ]
+}

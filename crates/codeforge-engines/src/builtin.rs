@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use codeforge_protocol::{
-    Confidence, Diagnostic, DiagnosticCategory, Fix, Language, RiskLevel, Severity, SourceRange,
-    TextEdit, Transformation, TransformationClass,
+    Confidence, Diagnostic, DiagnosticCategory, Fix, Language, RiskLevel, Severity, SourceContext,
+    SourceRange, TextEdit, Transformation, TransformationClass,
 };
 use tree_sitter::Node;
 
@@ -111,18 +111,31 @@ fn finding_to_diagnostic(
     let range = SourceRange::from_offsets(source, finding.start_byte, finding.end_byte)
         .unwrap_or_else(|_| SourceRange::new(0, 0, 1, 1, 1, 1).expect("empty range"));
     let transformation_class = class_for_rule(&finding.rule_id, finding.category);
+    let source_context = SourceContext::classify_at(path, source, finding.start_byte);
+    let (severity, confidence, message, explanation) = adjust_finding_for_context(
+        &finding.rule_id,
+        finding.severity,
+        finding.confidence,
+        finding.message,
+        finding.explanation,
+        source,
+        finding.start_byte,
+        source_context,
+    );
     let mut diagnostic = Diagnostic::new(
         engine,
         language,
         finding.rule_id,
-        finding.severity,
+        severity,
         finding.category,
-        finding.confidence,
+        confidence,
         path.to_path_buf(),
         range.clone(),
-        finding.message,
+        message,
     )
-    .with_explanation(finding.explanation)
+    .with_explanation(explanation)
+    .with_source_context(source_context)
+    .with_codeforge_rule_placeholder()
     .with_transformation_class(transformation_class);
     if let Some(fix) = finding.fix {
         diagnostic = diagnostic.with_fix(Fix::new(
@@ -136,6 +149,56 @@ fn finding_to_diagnostic(
         ));
     }
     diagnostic
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjust_finding_for_context(
+    rule_id: &str,
+    severity: Severity,
+    confidence: Confidence,
+    mut message: String,
+    mut explanation: String,
+    source: &str,
+    start_byte: usize,
+    context: SourceContext,
+) -> (Severity, Confidence, String, String) {
+    if rule_id == "RS-CORRECTNESS-001"
+        && matches!(
+            context,
+            SourceContext::Test | SourceContext::Benchmark | SourceContext::Fixture
+        )
+    {
+        message = format!("{message} (non-production context)");
+        explanation.push_str(
+            " This occurrence is in test, benchmark, or fixture context and is informational unless the assertion itself is wrong.",
+        );
+        return (Severity::Info, Confidence::Low, message, explanation);
+    }
+    if rule_id == "RS-SECURITY-001" {
+        if has_local_safety_argument(source, start_byte) {
+            message = "Unsafe block has a local safety argument; verify the invariant".to_owned();
+            explanation = "The unsafe boundary documents a safety invariant. Review the invariant and the surrounding ownership, lifetime, and bounds assumptions instead of treating unsafe presence as a vulnerability.".to_owned();
+            return (Severity::Info, Confidence::Low, message, explanation);
+        }
+        message =
+            "Unsafe block requires a concrete safety justification and risk review".to_owned();
+        explanation = "The unsafe boundary does not have an adjacent safety argument. Identify the invariant, ownership transfer, lifetime, bounds, and nullability assumptions.".to_owned();
+        return (Severity::Warning, Confidence::Medium, message, explanation);
+    }
+    (severity, confidence, message, explanation)
+}
+
+fn has_local_safety_argument(source: &str, start_byte: usize) -> bool {
+    let prefix = &source[..start_byte.min(source.len())];
+    let start = prefix.rfind('\n').map_or(0, |index| index + 1);
+    let before = &source[start.saturating_sub(600)..start];
+    before.lines().rev().take(10).any(|line| {
+        let line = line.trim().to_ascii_lowercase();
+        line.starts_with("// safety:")
+            || line.starts_with("# safety:")
+            || line.contains("safety:")
+            || line.contains("safety invariant")
+    })
 }
 
 fn collect_tree_findings(
@@ -258,29 +321,18 @@ fn analyze_text_source(
             }
         }
         Language::Toml => {
-            let mut keys = std::collections::BTreeSet::new();
-            for line in source.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with('[') || trimmed.starts_with('#') {
-                    continue;
-                }
-                if let Some((key, _)) = trimmed.split_once('=') {
-                    let key = key.trim();
-                    if !keys.insert(key.to_owned()) {
-                        let start = source.find(line).unwrap_or(0);
-                        findings.push(text_finding(
-                            "CF-TOML-001",
-                            Severity::Error,
-                            DiagnosticCategory::Correctness,
-                            Confidence::Medium,
-                            format!("Duplicate TOML key in this table: {key}"),
-                            "Duplicate keys can change tool configuration silently.",
-                            source,
-                            start,
-                            start + line.len(),
-                        ));
-                    }
-                }
+            if let Err(error) = toml::from_str::<toml::Value>(source) {
+                findings.push(text_finding(
+                    "CF-TOML-001",
+                    Severity::Error,
+                    DiagnosticCategory::Correctness,
+                    Confidence::High,
+                    format!("Invalid TOML: {error}"),
+                    "TOML must parse before tools can consume the configuration.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
             }
         }
         Language::Html => {

@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 codeforge-core.workspace = true
+codeforge-baseline.workspace = true
 codeforge-fleet.workspace = true
 codeforge-protocol.workspace = true
 anyhow.workspace = true
