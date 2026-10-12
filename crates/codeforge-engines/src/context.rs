@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn parses_real_calls_but_not_comments_or_string_literals() {
         let source = "fn leaf() {}\n#[test]\nfn test_leaf() { leaf(); let s = \"imaginary()\"; /* nope() */ }";
-        let facts = syntax_facts(Language::Rust, Path::new("test.rs"), source).unwrap();
+        let facts = syntax_facts(Language::Rust, Path::new("test.rs"), source).expect("fixture");
         assert_eq!(facts.symbols.len(), 2);
         assert_eq!(facts.symbols[1].calls, ["leaf"]);
         assert!(facts.symbols[1].test_hint);
@@ -120,7 +120,7 @@ mod tests {
             Path::new("a.py"),
             "def outer():\n    def inner():\n        target()\n    inner()\n",
         )
-        .unwrap();
+        .expect("fixture");
         assert_eq!(facts.symbols[0].calls, ["inner"]);
         assert_eq!(facts.symbols[1].calls, ["target"]);
     }
