@@ -324,27 +324,27 @@ mod tests {
 
     #[test]
     fn graph_context_and_impact_are_bounded_deterministic_and_read_only() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.rs"), "pub fn leaf() {}\npub fn caller() { leaf(); }\n#[test]\nfn test_caller() { caller(); }\n").unwrap();
-        let graph = SourceGraph::build(dir.path(), 10).unwrap();
+        let dir = tempfile::tempdir().expect("fixture");
+        std::fs::write(dir.path().join("a.rs"), "pub fn leaf() {}\npub fn caller() { leaf(); }\n#[test]\nfn test_caller() { caller(); }\n").expect("fixture");
+        let graph = SourceGraph::build(dir.path(), 10).expect("fixture");
         assert_eq!(graph.relations.len(), 2);
         let impact = graph.impact(vec![PathBuf::from("a.rs")], 4);
         assert_eq!(impact.related_tests.len(), 1);
-        let context = graph.extract(dir.path(), "caller", 1, 20).unwrap();
+        let context = graph.extract(dir.path(), "caller", 1, 20).expect("fixture");
         assert_eq!(context.fragments.len(), 1);
         assert!(context.partial);
         assert_eq!(context.fragments[0].excerpt_range.start_line, 2);
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
-        let again = SourceGraph::build(dir.path(), 10).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).expect("fixture").count(), 1);
+        let again = SourceGraph::build(dir.path(), 10).expect("fixture");
         assert_eq!(
-            serde_json::to_string(&graph).unwrap(),
-            serde_json::to_string(&again).unwrap()
+            serde_json::to_string(&graph).expect("fixture"),
+            serde_json::to_string(&again).expect("fixture")
         );
-        std::fs::write(dir.path().join("a.rs"), "fn replaced() {}\n").unwrap();
+        std::fs::write(dir.path().join("a.rs"), "fn replaced() {}\n").expect("fixture");
         assert!(
             graph
                 .extract(dir.path(), "caller", 10, 100)
-                .unwrap()
+                .expect("fixture")
                 .fragments
                 .is_empty()
         );
@@ -352,30 +352,31 @@ mod tests {
 
     #[test]
     fn ambiguity_cycles_and_depth_limits_are_explicit() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.rs"), "fn target() { caller(); }").unwrap();
+        let dir = tempfile::tempdir().expect("fixture");
+        std::fs::write(dir.path().join("a.rs"), "fn target() { caller(); }").expect("fixture");
         std::fs::write(
             dir.path().join("b.rs"),
             "fn target() {}\nfn caller() { target(); }",
         )
-        .unwrap();
-        let graph = SourceGraph::build(dir.path(), 10).unwrap();
+        .expect("fixture");
+        let graph = SourceGraph::build(dir.path(), 10).expect("fixture");
         assert!(graph.relations.iter().any(|e| e.ambiguous));
         assert!(graph.impact(vec!["a.rs".into()], 0).partial);
         assert_eq!(
             graph.impact(vec!["a.rs".into()], 10).impacted_symbols.len(),
             2
         );
-        let root = dir.path().canonicalize().unwrap();
+        let root = dir.path().canonicalize().expect("fixture");
         assert!(read_source(&root, Path::new("../outside.rs")).is_err());
     }
 
     #[test]
     fn unicode_budgets_and_missing_changed_files_are_reported() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.py"), "def 年度():\n    return '报告'\n").unwrap();
-        let graph = SourceGraph::build(dir.path(), 10).unwrap();
-        let context = graph.extract(dir.path(), "年度", 10, 6).unwrap();
+        let dir = tempfile::tempdir().expect("fixture");
+        std::fs::write(dir.path().join("a.py"), "def 年度():\n    return '报告'\n")
+            .expect("fixture");
+        let graph = SourceGraph::build(dir.path(), 10).expect("fixture");
+        let context = graph.extract(dir.path(), "年度", 10, 6).expect("fixture");
         assert!(context.partial);
         assert!(
             context
@@ -387,7 +388,7 @@ mod tests {
         assert!(
             graph
                 .extract(dir.path(), "", 0, 100)
-                .unwrap()
+                .expect("fixture")
                 .fragments
                 .is_empty()
         );
@@ -395,18 +396,18 @@ mod tests {
 
     #[tokio::test]
     async fn git_changes_use_the_same_canonical_root_on_windows() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("fixture");
         assert!(
             std::process::Command::new("git")
                 .args(["init", "--quiet"])
                 .current_dir(dir.path())
                 .status()
-                .unwrap()
+                .expect("fixture")
                 .success()
         );
-        std::fs::write(dir.path().join("a.rs"), "fn changed() {}\n").unwrap();
-        let graph = SourceGraph::build(dir.path(), 10).unwrap();
-        let report = graph.impact_changed(dir.path(), 4).await.unwrap();
+        std::fs::write(dir.path().join("a.rs"), "fn changed() {}\n").expect("fixture");
+        let graph = SourceGraph::build(dir.path(), 10).expect("fixture");
+        let report = graph.impact_changed(dir.path(), 4).await.expect("fixture");
         assert_eq!(report.changed_files, [PathBuf::from("a.rs")]);
         assert_eq!(report.impacted_symbols.len(), 1);
     }
