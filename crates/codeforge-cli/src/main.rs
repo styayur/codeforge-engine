@@ -50,6 +50,37 @@ enum Command {
     Ci(CiArgs),
     /// Orchestrate independent repository transactions across a fleet.
     Fleet(FleetArgs),
+    /// Extract exact source fragments on demand (literal symbol-name search).
+    Context(ContextArgs),
+    /// Suggest impacted symbols and tests for current Git changes (heuristic).
+    Impact(ImpactArgs),
+}
+
+#[derive(Debug, Args)]
+struct ContextArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long, default_value = "")]
+    query: String,
+    #[arg(long, default_value_t = 20)]
+    limit: usize,
+    #[arg(long, default_value_t = 65536)]
+    max_bytes: usize,
+    #[arg(long, default_value_t = 512)]
+    max_files: usize,
+}
+
+#[derive(Debug, Args)]
+struct ImpactArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long, default_value_t = 512)]
+    max_files: usize,
+    #[arg(long, default_value_t = 4)]
+    depth: usize,
+    /// Include the candidate relation graph in JSON output.
+    #[arg(long)]
+    graph: bool,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -288,6 +319,16 @@ async fn main() -> ExitCode {
         Command::Stats(args) => stats(args).await,
         Command::Ci(args) => ci(args).await,
         Command::Fleet(args) => fleet(args).await,
+        Command::Context(args) => {
+            let graph = codeforge_core::context::SourceGraph::build(&args.path, args.max_files);
+            graph
+                .and_then(|graph| {
+                    graph.extract(&args.path, &args.query, args.limit, args.max_bytes)
+                })
+                .map_err(anyhow::Error::from)
+                .and_then(|report| print_json(&report))
+        }
+        Command::Impact(args) => impact(args).await,
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -295,6 +336,16 @@ async fn main() -> ExitCode {
             eprintln!("error: {error:#}");
             ExitCode::from(exit_code_for(&error))
         }
+    }
+}
+
+async fn impact(args: ImpactArgs) -> Result<()> {
+    let graph = codeforge_core::context::SourceGraph::build(&args.path, args.max_files)?;
+    let report = graph.impact_changed(&args.path, args.depth).await?;
+    if args.graph {
+        print_json(&serde_json::json!({"impact": report, "graph": graph}))
+    } else {
+        print_json(&report)
     }
 }
 
