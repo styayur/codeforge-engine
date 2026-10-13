@@ -171,7 +171,11 @@ impl SourceGraph {
             .iter()
             .filter(|symbol| symbol.name.contains(query))
         {
-            if remaining == 0 || fragments.len() >= limit {
+            if remaining == 0 {
+                partial = true;
+                break;
+            }
+            if fragments.len() >= limit {
                 partial = true;
                 break;
             }
