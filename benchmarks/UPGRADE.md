@@ -27,3 +27,17 @@ source positions, deterministic bounds, stale content and ambiguity; external
 tests cover standard/legacy SARIF, rejected fixes/URI bases, malformed output,
 nonzero process exits and inherited-pipe deadlines. These are not semantic
 equivalence proofs or a real CodeQL integration benchmark.
+
+The standalone working-set runs varied considerably (about 7.7 vs 21 MB), so a
+six-pair interleaved recheck was run with no concurrent local compilation. Raw
+readings are in interleaved-memory.json. Do not infer a memory improvement from
+the isolated startup runs. Sampled private bytes are not peak RSS.
+
+| Interleaved measurement | Original | Upgraded |
+|---|---:|---:|
+| Mean elapsed ms | 2791.23 | 2727.22 |
+| Mean per-run peak working set bytes | 7214421.33 | 7268352.00 |
+| Mean sampled private bytes | 2198869.33 | 2316288.00 |
+
+No substantial default-path runtime or memory regression reproduced. Binary
+growth is 2.80%; optional context/SARIF commands account for the added code.
