@@ -2,6 +2,7 @@
 
 mod ai;
 mod config;
+pub mod context;
 mod sandbox;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
