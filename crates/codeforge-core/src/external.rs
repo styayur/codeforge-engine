@@ -323,8 +323,15 @@ mod tests {
     #[test]
     fn standard_codeql_sarif_import_keeps_path_evidence_and_no_fix_authority() {
         let root = tempfile::tempdir().expect("root");
+        let mut input = fixture("src/a%20b.rs");
+        input["runs"][0]["results"][0]["properties"] = serde_json::json!({"safeFixAvailable":true});
+        input["runs"][0]["results"][0]["fixes"] = serde_json::json!([{
+            "description":{"text":"untrusted fix"},
+            "artifactChanges":[{"artifactLocation":{"uri":"src/a%20b.rs"},
+                "replacements":[{"deletedRegion":{"startLine":2},"insertedContent":{"text":"replacement"}}]}]
+        }]);
         let report = import_bytes(
-            &serde_json::to_vec(&fixture("src/a%20b.rs")).expect("json"),
+            &serde_json::to_vec(&input).expect("json"),
             root.path(),
             Language::Rust,
         )
@@ -358,6 +365,27 @@ mod tests {
             );
         }
         assert!(import_bytes(b"{}", root.path(), Language::Rust).is_err());
+        let mut input = fixture("a.rs");
+        let base = &mut input["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"];
+        base["uriBaseId"] = Value::String("unresolved-base".into());
+        assert!(
+            import_bytes(
+                &serde_json::to_vec(&input).expect("json"),
+                root.path(),
+                Language::Rust
+            )
+            .is_err()
+        );
+        input["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uriBaseId"] =
+            Value::String("%SRCROOT%".into());
+        assert!(
+            import_bytes(
+                &serde_json::to_vec(&input).expect("json"),
+                root.path(),
+                Language::Rust
+            )
+            .is_ok()
+        );
         assert!(
             import_bytes(
                 &vec![b' '; MAX_SARIF_BYTES + 1],
