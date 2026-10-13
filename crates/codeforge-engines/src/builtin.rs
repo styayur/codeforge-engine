@@ -642,7 +642,7 @@ fn rust_rule(source: &str, node: Node<'_>) -> Option<Finding> {
                 start_byte: node.start_byte(),
                 end_byte: node.end_byte(),
                 fix: Some(FixSpec {
-                    replacement: format!("({receiver}).is_empty()"),
+                    replacement: format!("{receiver}.is_empty()"),
                     safe: false,
                     title: "Use is_empty".to_owned(),
                 }),
@@ -986,6 +986,6 @@ mod tests {
         );
         assert!(!finding.safe_fix_available);
         assert_eq!(finding.confidence, Confidence::Medium);
-        assert_eq!(finding.fixes[0].edits[0].replacement, "(items).is_empty()");
+        assert_eq!(finding.fixes[0].edits[0].replacement, "items.is_empty()");
     }
 }
