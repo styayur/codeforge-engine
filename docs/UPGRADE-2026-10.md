@@ -38,7 +38,15 @@ License/design references (no source copied or frameworks embedded):
 
 Original workspace tests passed. Fleet tests cover stable keys, sanitization
 collisions, malformed/ambiguous PR lookups, required build/test states, optional
-failures and three-repository failure isolation. No dependencies or lockfiles
-changed. `benchmarks/Measure-Cli.ps1` measures 30 `scan --json` launches after
+failures and three-repository failure isolation. No Rust dependencies changed. The existing source-map-js frontend dependency
+was updated from 1.2.1 to 1.2.2 to address GHSA-68fv-2mgg-jv7q. `benchmarks/Measure-Cli.ps1` measures 30 `scan --json` launches after
 three warmups, reports mean/P95/peak working set and records a sanitized fixture
 summary. This startup workload is a regression guard, not an optimization claim.
+
+## Phase 2 and 3 boundaries
+
+Source context/impact extraction is opt-in and bounded; see source-context.md.
+The external adapter and SARIF path evidence are opt-in; see external-analysis.md.
+Neither is registered on the default scan or Fleet hot path. A subprocess pipe
+deadline regression test covers descendants retaining inherited output handles.
+External evidence has no automatic fix authority. No new Rust dependencies.

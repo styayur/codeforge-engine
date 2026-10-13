@@ -54,6 +54,35 @@ enum Command {
     Context(ContextArgs),
     /// Suggest impacted symbols and tests for current Git changes (heuristic).
     Impact(ImpactArgs),
+    /// Import local SARIF and source-path evidence without running tools.
+    ImportSarif(ImportSarifArgs),
+    /// Explicitly run an installed CodeQL CLI on an existing local database.
+    Codeql(CodeqlArgs),
+}
+
+#[derive(Debug, Args)]
+struct ImportSarifArgs {
+    file: PathBuf,
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+    #[arg(long, default_value = "rust")]
+    language: String,
+}
+
+#[derive(Debug, Args)]
+struct CodeqlArgs {
+    #[arg(long)]
+    program: PathBuf,
+    #[arg(long)]
+    database: PathBuf,
+    #[arg(long)]
+    queries: PathBuf,
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+    #[arg(long, default_value = "rust")]
+    language: String,
+    #[arg(long, default_value_t = 300)]
+    timeout_secs: u64,
 }
 
 #[derive(Debug, Args)]
@@ -329,6 +358,8 @@ async fn main() -> ExitCode {
                 .and_then(|report| print_json(&report))
         }
         Command::Impact(args) => impact(args).await,
+        Command::ImportSarif(args) => import_sarif(args),
+        Command::Codeql(args) => codeql(args).await,
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -337,6 +368,28 @@ async fn main() -> ExitCode {
             ExitCode::from(exit_code_for(&error))
         }
     }
+}
+
+fn import_sarif(args: ImportSarifArgs) -> Result<()> {
+    let report = codeforge_core::external::import_sarif(
+        &args.file,
+        &args.root,
+        Language::from_name(&args.language)?,
+    )?;
+    print_json(&report)
+}
+
+async fn codeql(args: CodeqlArgs) -> Result<()> {
+    let report = codeforge_core::external::analyze_codeql(
+        &args.program,
+        &args.database,
+        &args.queries,
+        &args.root,
+        Language::from_name(&args.language)?,
+        args.timeout_secs,
+    )
+    .await?;
+    print_json(&report)
 }
 
 async fn impact(args: ImpactArgs) -> Result<()> {
