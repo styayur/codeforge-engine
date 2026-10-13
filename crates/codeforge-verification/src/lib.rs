@@ -286,6 +286,7 @@ mod tests {
 
     #[test]
     #[ignore = "subprocess fixture"]
+    #[allow(clippy::zombie_processes)] // Fixture must exit before its pipe-holding child.
     fn inherited_pipe_helper() {
         match std::env::var("CODEFORGE_PIPE_TEST").as_deref() {
             Ok("parent") => {

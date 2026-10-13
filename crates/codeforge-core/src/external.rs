@@ -236,12 +236,13 @@ fn invalid(message: &str) -> CoreError {
 fn validate_uri_bases(value: &Value) -> Result<(), CoreError> {
     match value {
         Value::Object(fields) => {
-            if let Some(base) = fields.get("uriBaseId") {
-                if base.as_str() != Some("%SRCROOT%") {
-                    return Err(invalid(
-                        "unsupported URI base; use repository-relative URIs or %SRCROOT%",
-                    ));
-                }
+            if fields
+                .get("uriBaseId")
+                .is_some_and(|base| base.as_str() != Some("%SRCROOT%"))
+            {
+                return Err(invalid(
+                    "unsupported URI base; use repository-relative URIs or %SRCROOT%",
+                ));
             }
             for value in fields.values() {
                 validate_uri_bases(value)?;
