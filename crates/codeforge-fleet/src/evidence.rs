@@ -128,6 +128,7 @@ impl EvidenceWriter {
             serde_json::to_vec_pretty(&input.toolchain)?.as_slice(),
         )?;
 
+        tracing::info!(evidence_id = %input.id, "evidence bundle written");
         Ok(WrittenEvidence {
             bundle,
             report_markdown,
