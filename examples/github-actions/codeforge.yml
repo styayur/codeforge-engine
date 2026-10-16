@@ -1,0 +1,28 @@
+name: CodeForge
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build CodeForge CLI
+        run: cargo build --release -p codeforge-cli
+      - name: Review changed files
+        run: |
+          ./target/release/codeforge ci \
+            --changed \
+            --risk low \
+            --sarif codeforge.sarif
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: codeforge.sarif

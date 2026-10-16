@@ -68,11 +68,15 @@ export function ProblemList({
                 <div className="problem-row-top">
                   <SeverityPill severity={diagnostic.severity} />
                   <span className="rule-id">{diagnostic.rule_id}</span>
+                  {diagnostic.source_context && <span className="rule-id">{diagnostic.source_context}</span>}
+                  <span className="rule-id">{diagnostic.confidence}</span>
                   {diagnostic.fixes.length > 0 && <span className="fixable">fixable</span>}
                 </div>
                 <strong>{diagnostic.message}</strong>
                 <span className="muted">
                   {diagnostic.file}:{diagnostic.range.start_line}:{diagnostic.range.start_column}
+                  {diagnostic.producer ? ` · ${diagnostic.producer}` : ""}
+                  {diagnostic.native_rule_id ? ` · ${diagnostic.native_rule_id}` : ""}
                 </span>
               </button>
             );

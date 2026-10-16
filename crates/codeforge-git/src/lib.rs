@@ -15,6 +15,8 @@ pub enum GitError {
     CommandFailed(String),
     #[error("git output was not valid UTF-8")]
     OutputEncoding,
+    #[error("invalid Git branch name: {0}")]
+    InvalidBranch(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -78,6 +80,58 @@ impl GitRepository {
     pub async fn branch(&self) -> Result<String, GitError> {
         let output = self.run(["rev-parse", "--abbrev-ref", "HEAD"]).await?;
         Ok(output.trim().to_owned())
+    }
+
+    pub async fn head_commit(&self) -> Result<String, GitError> {
+        let output = self.run(["rev-parse", "HEAD"]).await?;
+        Ok(output.trim().to_owned())
+    }
+
+    pub async fn is_clean(&self) -> Result<bool, GitError> {
+        Ok(self
+            .run(["status", "--porcelain=v1", "--untracked-files=all"])
+            .await?
+            .trim()
+            .is_empty())
+    }
+
+    pub async fn create_branch(&self, branch: &str) -> Result<(), GitError> {
+        validate_branch(branch)?;
+        self.run(["switch", "-c", branch]).await?;
+        Ok(())
+    }
+
+    pub async fn stage_paths<'a>(
+        &self,
+        paths: impl IntoIterator<Item = &'a Path>,
+    ) -> Result<(), GitError> {
+        let mut args = vec!["add".to_owned(), "--".to_owned()];
+        args.extend(
+            paths
+                .into_iter()
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+        );
+        if args.len() == 2 {
+            return Ok(());
+        }
+        self.run(args).await?;
+        Ok(())
+    }
+
+    pub async fn commit(&self, message: &str) -> Result<(), GitError> {
+        if message.trim().is_empty() {
+            return Err(GitError::CommandFailed(
+                "commit message must not be empty".to_owned(),
+            ));
+        }
+        self.run(["commit", "-m", message]).await?;
+        Ok(())
+    }
+
+    pub async fn push_branch(&self, branch: &str) -> Result<(), GitError> {
+        validate_branch(branch)?;
+        self.run(["push", "-u", "origin", branch]).await?;
+        Ok(())
     }
 
     pub async fn changed_files(&self) -> Result<Vec<ChangedFile>, GitError> {
@@ -149,6 +203,19 @@ impl GitRepository {
         }
         String::from_utf8(output.stdout).map_err(|_| GitError::OutputEncoding)
     }
+}
+
+fn validate_branch(branch: &str) -> Result<(), GitError> {
+    if branch.is_empty()
+        || branch.starts_with('-')
+        || branch.contains("..")
+        || branch
+            .chars()
+            .any(|character| character.is_whitespace() || "~^:?*[\\".contains(character))
+    {
+        return Err(GitError::InvalidBranch(branch.to_owned()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

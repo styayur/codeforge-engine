@@ -36,10 +36,18 @@ pub enum Language {
     TypeScript,
     Java,
     Go,
+    Dart,
+    PowerShell,
+    Markdown,
+    Json,
+    Yaml,
+    Toml,
+    Html,
+    Css,
 }
 
 impl Language {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 15] = [
         Self::Python,
         Self::Rust,
         Self::C,
@@ -47,6 +55,14 @@ impl Language {
         Self::TypeScript,
         Self::Java,
         Self::Go,
+        Self::Dart,
+        Self::PowerShell,
+        Self::Markdown,
+        Self::Json,
+        Self::Yaml,
+        Self::Toml,
+        Self::Html,
+        Self::Css,
     ];
 
     pub fn from_extension(extension: &str) -> Option<Self> {
@@ -62,6 +78,14 @@ impl Language {
             "ts" | "tsx" | "mts" | "cts" => Some(Self::TypeScript),
             "java" => Some(Self::Java),
             "go" => Some(Self::Go),
+            "dart" => Some(Self::Dart),
+            "ps1" | "psm1" | "psd1" => Some(Self::PowerShell),
+            "md" | "markdown" => Some(Self::Markdown),
+            "json" | "jsonc" => Some(Self::Json),
+            "yaml" | "yml" => Some(Self::Yaml),
+            "toml" => Some(Self::Toml),
+            "html" | "htm" => Some(Self::Html),
+            "css" | "scss" => Some(Self::Css),
             _ => None,
         }
     }
@@ -75,6 +99,14 @@ impl Language {
             "typescript" | "ts" | "tsx" => Ok(Self::TypeScript),
             "java" => Ok(Self::Java),
             "go" | "golang" => Ok(Self::Go),
+            "dart" | "flutter" => Ok(Self::Dart),
+            "powershell" | "pwsh" | "ps" => Ok(Self::PowerShell),
+            "markdown" | "md" => Ok(Self::Markdown),
+            "json" | "jsonc" => Ok(Self::Json),
+            "yaml" | "yml" => Ok(Self::Yaml),
+            "toml" => Ok(Self::Toml),
+            "html" => Ok(Self::Html),
+            "css" => Ok(Self::Css),
             other => Err(ProtocolError::UnsupportedLanguage(other.to_owned())),
         }
     }
@@ -88,6 +120,14 @@ impl Language {
             Self::TypeScript => "typescript",
             Self::Java => "java",
             Self::Go => "go",
+            Self::Dart => "dart",
+            Self::PowerShell => "powershell",
+            Self::Markdown => "markdown",
+            Self::Json => "json",
+            Self::Yaml => "yaml",
+            Self::Toml => "toml",
+            Self::Html => "html",
+            Self::Css => "css",
         }
     }
 
@@ -100,6 +140,14 @@ impl Language {
             Self::TypeScript => "TypeScript",
             Self::Java => "Java",
             Self::Go => "Go",
+            Self::Dart => "Dart / Flutter",
+            Self::PowerShell => "PowerShell",
+            Self::Markdown => "Markdown",
+            Self::Json => "JSON",
+            Self::Yaml => "YAML",
+            Self::Toml => "TOML",
+            Self::Html => "HTML",
+            Self::Css => "CSS",
         }
     }
 
@@ -112,7 +160,30 @@ impl Language {
             Self::TypeScript => "**/*.{ts,tsx,mts,cts}",
             Self::Java => "**/*.java",
             Self::Go => "**/*.go",
+            Self::Dart => "**/*.dart",
+            Self::PowerShell => "**/*.{ps1,psm1,psd1}",
+            Self::Markdown => "**/*.{md,markdown}",
+            Self::Json => "**/*.{json,jsonc}",
+            Self::Yaml => "**/*.{yaml,yml}",
+            Self::Toml => "**/*.toml",
+            Self::Html => "**/*.{html,htm}",
+            Self::Css => "**/*.{css,scss}",
         }
+    }
+
+    pub const fn is_code(self) -> bool {
+        matches!(
+            self,
+            Self::Python
+                | Self::Rust
+                | Self::C
+                | Self::JavaScript
+                | Self::TypeScript
+                | Self::Java
+                | Self::Go
+                | Self::Dart
+                | Self::PowerShell
+        )
     }
 }
 
@@ -165,12 +236,230 @@ pub enum Confidence {
     High,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceContext {
+    #[default]
+    Production,
+    Test,
+    Benchmark,
+    Fixture,
+    Generated,
+    BuildScript,
+    Config,
+    Vendor,
+}
+
+impl SourceContext {
+    pub fn classify(path: &Path, source: &str) -> Self {
+        Self::classify_at(path, source, source.len())
+    }
+
+    pub fn classify_at(path: &Path, source: &str, offset: usize) -> Self {
+        let normalized = path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        if normalized.contains("/vendor/") || normalized.contains("/third_party/") {
+            return Self::Vendor;
+        }
+        if normalized.contains("/generated/") || normalized.ends_with(".g.dart") {
+            return Self::Generated;
+        }
+        if normalized.contains("/windows/runner/")
+            || normalized.contains("/linux/runner/")
+            || normalized.contains("/macos/runner/")
+            || normalized.contains("/flutter/")
+            || normalized.contains("generated_plugin_registrant")
+        {
+            return Self::Generated;
+        }
+        if normalized.contains("/fixtures/") || normalized.contains("/fixture/") {
+            return Self::Fixture;
+        }
+        if normalized.contains("/benches/")
+            || normalized.contains("/benchmarks/")
+            || normalized.contains("/bench/")
+        {
+            return Self::Benchmark;
+        }
+        if normalized.contains("/tests/")
+            || normalized.contains("/test/")
+            || normalized.ends_with("_test.rs")
+            || normalized.ends_with("_tests.rs")
+            || normalized.ends_with("tests.rs")
+            || normalized.ends_with(".test.ts")
+            || normalized.ends_with(".test.tsx")
+            || normalized.ends_with(".test.js")
+        {
+            return Self::Test;
+        }
+        let prefix = &source[..offset.min(source.len())];
+        if prefix.contains("#[cfg(test)]") || prefix.contains("mod tests") {
+            return Self::Test;
+        }
+        if normalized.ends_with("build.rs") || normalized.ends_with("build.gradle") {
+            return Self::BuildScript;
+        }
+        if matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("toml" | "json" | "jsonc" | "yaml" | "yml")
+        ) {
+            return Self::Config;
+        }
+        Self::Production
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingDisposition {
+    #[default]
+    Unreviewed,
+    Accepted,
+    FalsePositive,
+    HumanReview,
+    Fixed,
+}
+
+impl FindingDisposition {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unreviewed => "unreviewed",
+            Self::Accepted => "accepted",
+            Self::FalsePositive => "false_positive",
+            Self::HumanReview => "human_review",
+            Self::Fixed => "fixed",
+        }
+    }
+
+    pub const fn requires_reason(self) -> bool {
+        matches!(self, Self::Accepted | Self::FalsePositive)
+    }
+}
+
+impl fmt::Display for FindingDisposition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingLifecycle {
+    #[default]
+    Active,
+    Stale,
+    Resolved,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BaselineMatchKind {
+    New,
+    Exact,
+    Structural,
+    ContextRelocated,
+    Ambiguous,
+    #[default]
+    Known,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    Complete,
+    Partial,
+    #[default]
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingStatus {
+    #[default]
+    Clean,
+    Findings,
+    NewRegressions,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
     Low,
     Medium,
     High,
+    VeryHigh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TransformationClass {
+    #[default]
+    StyleOnly,
+    SafeAstFix,
+    DeadCode,
+    ComplexityReduction,
+    ApiRefactor,
+    PerformanceCandidate,
+    ArchitectureChange,
+    DependencyUpdate,
+}
+
+impl TransformationClass {
+    pub const fn default_risk(self) -> RiskLevel {
+        match self {
+            Self::StyleOnly | Self::SafeAstFix => RiskLevel::Low,
+            Self::DeadCode | Self::ComplexityReduction => RiskLevel::Medium,
+            Self::ApiRefactor | Self::PerformanceCandidate => RiskLevel::High,
+            Self::ArchitectureChange => RiskLevel::VeryHigh,
+            Self::DependencyUpdate => RiskLevel::VeryHigh,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StyleOnly => "STYLE_ONLY",
+            Self::SafeAstFix => "SAFE_AST_FIX",
+            Self::DeadCode => "DEAD_CODE",
+            Self::ComplexityReduction => "COMPLEXITY_REDUCTION",
+            Self::ApiRefactor => "API_REFACTOR",
+            Self::PerformanceCandidate => "PERFORMANCE_CANDIDATE",
+            Self::ArchitectureChange => "ARCHITECTURE_CHANGE",
+            Self::DependencyUpdate => "DEPENDENCY_UPDATE",
+        }
+    }
+
+    pub const fn is_permitted_by(self, risk: RiskLevel) -> bool {
+        matches!(
+            (risk, self),
+            (RiskLevel::Low, Self::StyleOnly | Self::SafeAstFix)
+                | (
+                    RiskLevel::Medium,
+                    Self::StyleOnly | Self::SafeAstFix | Self::DeadCode | Self::ComplexityReduction
+                )
+                | (
+                    RiskLevel::High,
+                    Self::StyleOnly
+                        | Self::SafeAstFix
+                        | Self::DeadCode
+                        | Self::ComplexityReduction
+                        | Self::ApiRefactor
+                        | Self::PerformanceCandidate
+                )
+                | (RiskLevel::VeryHigh, _)
+        )
+    }
+}
+
+impl fmt::Display for TransformationClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +573,32 @@ pub struct Diagnostic {
     pub fixes: Vec<Fix>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transformation_class: Option<TransformationClass>,
+    #[serde(default)]
+    pub safe_fix_available: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_rule_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codeforge_rule_id: Option<String>,
+    #[serde(default)]
+    pub source_context: SourceContext,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_version: Option<String>,
+    #[serde(default)]
+    pub disposition: FindingDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disposition_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
 }
 
 impl Diagnostic {
@@ -299,9 +614,10 @@ impl Diagnostic {
         range: SourceRange,
         message: impl Into<String>,
     ) -> Self {
+        let engine = engine.into();
         Self {
             id: Uuid::new_v4().to_string(),
-            engine: engine.into(),
+            engine: engine.clone(),
             language,
             rule_id: rule_id.into(),
             severity,
@@ -314,11 +630,71 @@ impl Diagnostic {
             source: None,
             fixes: Vec::new(),
             tags: Vec::new(),
+            transformation_class: None,
+            safe_fix_available: false,
+            evidence: Vec::new(),
+            producer: Some(engine),
+            producer_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            native_rule_id: None,
+            codeforge_rule_id: None,
+            source_context: SourceContext::Production,
+            symbol: None,
+            rule_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            disposition: FindingDisposition::Unreviewed,
+            disposition_reason: None,
+            reviewed_at: None,
         }
     }
 
     pub fn with_fix(mut self, fix: Fix) -> Self {
+        self.safe_fix_available |= fix.safe;
         self.fixes.push(fix);
+        self
+    }
+
+    pub fn with_transformation_class(mut self, class: TransformationClass) -> Self {
+        self.transformation_class = Some(class);
+        self
+    }
+
+    pub fn with_evidence(mut self, evidence: impl Into<String>) -> Self {
+        self.evidence.push(evidence.into());
+        self
+    }
+
+    pub fn with_native_rule(mut self, rule_id: impl Into<String>) -> Self {
+        self.native_rule_id = Some(rule_id.into());
+        self
+    }
+
+    pub fn with_codeforge_rule(mut self, rule_id: impl Into<String>) -> Self {
+        self.codeforge_rule_id = Some(rule_id.into());
+        self
+    }
+
+    pub fn with_codeforge_rule_placeholder(mut self) -> Self {
+        self.codeforge_rule_id = Some(self.rule_id.clone());
+        self
+    }
+
+    pub fn with_source_context(mut self, context: SourceContext) -> Self {
+        self.source_context = context;
+        self
+    }
+
+    pub fn with_symbol(mut self, symbol: impl Into<String>) -> Self {
+        self.symbol = Some(symbol.into());
+        self
+    }
+
+    pub fn with_disposition(
+        mut self,
+        disposition: FindingDisposition,
+        reason: Option<String>,
+    ) -> Self {
+        self.disposition = disposition;
+        self.disposition_reason = reason;
+        self.reviewed_at = Some(Utc::now());
         self
     }
 
@@ -357,6 +733,8 @@ pub struct Transformation {
     #[serde(default)]
     pub preconditions: Vec<String>,
     pub risk_level: RiskLevel,
+    #[serde(default)]
+    pub transformation_class: TransformationClass,
     pub reversible: bool,
 }
 
@@ -379,8 +757,15 @@ impl Transformation {
             edits,
             preconditions: Vec::new(),
             risk_level: RiskLevel::Low,
+            transformation_class: TransformationClass::StyleOnly,
             reversible: true,
         }
+    }
+
+    pub fn with_class(mut self, class: TransformationClass) -> Self {
+        self.transformation_class = class;
+        self.risk_level = class.default_risk();
+        self
     }
 }
 
@@ -502,6 +887,8 @@ impl VerificationResult {
             EvidenceLevel::Verified
         } else if self.tests.status == VerificationStatus::Passed {
             EvidenceLevel::Tested
+        } else if self.benchmark.status == VerificationStatus::Passed {
+            EvidenceLevel::Benchmarked
         } else if self.build.status == VerificationStatus::Passed {
             EvidenceLevel::Compiled
         } else if self.syntax.status == VerificationStatus::Passed {
@@ -512,9 +899,54 @@ impl VerificationResult {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerificationEvidence {
+    pub syntax: VerificationStatus,
+    pub compiled: VerificationStatus,
+    pub tested: VerificationStatus,
+    pub benchmarked: VerificationStatus,
+    pub equivalence: VerificationStatus,
+}
+
+impl VerificationEvidence {
+    pub fn from_result(result: &VerificationResult) -> Self {
+        Self {
+            syntax: result.syntax.status,
+            compiled: result.build.status,
+            tested: result.tests.status,
+            benchmarked: result.benchmark.status,
+            equivalence: result.equivalence.status,
+        }
+    }
+
+    pub fn levels(&self) -> Vec<EvidenceLevel> {
+        let mut levels = Vec::new();
+        if self.equivalence == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Verified);
+        }
+        if self.tested == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Tested);
+        }
+        if self.benchmarked == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Benchmarked);
+        }
+        if self.compiled == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Compiled);
+        }
+        if self.syntax == VerificationStatus::Passed {
+            levels.push(EvidenceLevel::Heuristic);
+        }
+        if levels.is_empty() {
+            levels.push(EvidenceLevel::Unverified);
+        }
+        levels
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EvidenceLevel {
+    Benchmarked,
     Verified,
     Tested,
     Compiled,
@@ -529,6 +961,8 @@ pub struct TimingSummary {
     pub mean: f64,
     pub median: f64,
     pub variance: f64,
+    #[serde(default)]
+    pub stddev: f64,
     pub min: f64,
     pub max: f64,
 }
@@ -566,6 +1000,7 @@ impl TimingSummary {
             mean,
             median,
             variance,
+            stddev: variance.sqrt(),
         }
     }
 }
@@ -576,13 +1011,33 @@ pub struct BenchmarkResult {
     pub before: TimingSummary,
     pub after: TimingSummary,
     pub delta_percent: f64,
+    #[serde(default = "default_warmup")]
+    pub warmup: usize,
+    #[serde(default = "default_sample_count")]
+    pub samples: usize,
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
     pub environment: BTreeMap<String, String>,
+    #[serde(default = "default_timestamp")]
+    pub timestamp: DateTime<Utc>,
 }
 
 impl BenchmarkResult {
     pub fn has_real_measurements(&self) -> bool {
         !self.before.samples.is_empty() && !self.after.samples.is_empty()
     }
+}
+
+const fn default_warmup() -> usize {
+    1
+}
+
+const fn default_sample_count() -> usize {
+    5
+}
+
+fn default_timestamp() -> DateTime<Utc> {
+    Utc::now()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -693,6 +1148,363 @@ pub struct WorkspaceSummary {
     pub git_branch: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCapability {
+    pub parse: bool,
+    pub format: bool,
+    pub lint: bool,
+    pub fix: bool,
+    pub verify: bool,
+    pub benchmark: bool,
+    pub profile: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetectedProjectProfile {
+    pub ecosystem: String,
+    pub languages: Vec<Language>,
+    pub markers: Vec<String>,
+    pub confidence: Confidence,
+    #[serde(default)]
+    pub suggested_commands: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProfile {
+    pub root: PathBuf,
+    pub name: String,
+    pub ecosystems: Vec<DetectedProjectProfile>,
+    pub languages: Vec<Language>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolAdapterDescriptor {
+    pub id: String,
+    pub name: String,
+    pub languages: Vec<Language>,
+    pub capabilities: ToolCapability,
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolGap {
+    pub tool: String,
+    pub required_for: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolchainEntry {
+    pub tool: String,
+    pub required_for: String,
+    pub detected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub capabilities: ToolCapability,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolchainSnapshot {
+    pub captured_at: DateTime<Utc>,
+    pub entries: Vec<ToolchainEntry>,
+}
+
+impl Default for ToolchainSnapshot {
+    fn default() -> Self {
+        Self {
+            captured_at: Utc::now(),
+            entries: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineEntry {
+    pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structural_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_fingerprint: Option<String>,
+    pub rule_id: String,
+    pub path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_hash: Option<String>,
+    #[serde(default)]
+    pub source_context: SourceContext,
+    pub disposition: FindingDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub first_seen: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reviewed: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_version: Option<String>,
+    #[serde(default)]
+    pub lifecycle: FindingLifecycle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineFile {
+    pub schema_version: u32,
+    pub codeforge_version: String,
+    #[serde(default)]
+    pub entries: Vec<BaselineEntry>,
+}
+
+impl Default for BaselineFile {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            codeforge_version: env!("CARGO_PKG_VERSION").to_owned(),
+            entries: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineComparisonEntry {
+    pub fingerprint: String,
+    pub rule_id: String,
+    pub path: PathBuf,
+    pub disposition: FindingDisposition,
+    pub lifecycle: FindingLifecycle,
+    pub match_kind: BaselineMatchKind,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaselineComparison {
+    pub new: Vec<BaselineComparisonEntry>,
+    pub known_accepted: Vec<BaselineComparisonEntry>,
+    pub known_false_positive: Vec<BaselineComparisonEntry>,
+    pub human_review: Vec<BaselineComparisonEntry>,
+    pub resolved: Vec<BaselineComparisonEntry>,
+    pub stale: Vec<BaselineComparisonEntry>,
+    pub ambiguous: Vec<BaselineComparisonEntry>,
+}
+
+impl BaselineComparison {
+    pub fn is_clean(&self, fail_on_new: bool) -> bool {
+        !fail_on_new || self.new.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidenceBundle {
+    pub id: String,
+    pub repository: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    pub risk: RiskLevel,
+    #[serde(default)]
+    pub transformation_classes: Vec<TransformationClass>,
+    pub baseline: VerificationResult,
+    pub after: VerificationResult,
+    pub evidence: VerificationEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<BenchmarkResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<Patch>,
+    pub report_dir: PathBuf,
+    #[serde(default, skip_serializing_if = "ToolchainSnapshot::is_empty")]
+    pub toolchain: ToolchainSnapshot,
+}
+
+impl ToolchainSnapshot {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FleetRunStatus {
+    Success,
+    PartialSuccess,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepoRunStatus {
+    Success,
+    PartialSuccess,
+    Findings,
+    VerificationFailure,
+    MissingTool,
+    ConfigurationFailure,
+    TransformationFailure,
+    SafetyRefusal,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoRunSummary {
+    pub repository: String,
+    pub path: PathBuf,
+    pub status: RepoRunStatus,
+    pub languages: Vec<Language>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_profile: Option<ProjectProfile>,
+    #[serde(default)]
+    pub findings: usize,
+    #[serde(default)]
+    pub pending_transformations: usize,
+    pub risk: RiskLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<VerificationResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<EvidenceBundle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<PathBuf>,
+    pub message: String,
+    #[serde(default)]
+    pub source_findings: usize,
+    #[serde(default)]
+    pub tool_gaps: Vec<ToolGap>,
+    #[serde(default)]
+    pub verification_failures: usize,
+    #[serde(default)]
+    pub configuration_failures: usize,
+    #[serde(default)]
+    pub finding_status: FindingStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetRunSummary {
+    pub run_id: String,
+    pub fleet_name: String,
+    pub status: FleetRunStatus,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: DateTime<Utc>,
+    pub repositories: Vec<RepoRunSummary>,
+    pub report_dir: PathBuf,
+    #[serde(default)]
+    pub execution_status: ExecutionStatus,
+    #[serde(default)]
+    pub finding_status: FindingStatus,
+    #[serde(default)]
+    pub source_findings: usize,
+    #[serde(default)]
+    pub tool_gaps: Vec<ToolGap>,
+    #[serde(default)]
+    pub verification_failures: usize,
+    #[serde(default)]
+    pub configuration_failures: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_comparison: Option<BaselineComparison>,
+}
+
+impl FleetRunSummary {
+    pub fn from_repositories(
+        run_id: impl Into<String>,
+        fleet_name: impl Into<String>,
+        started_at: DateTime<Utc>,
+        report_dir: PathBuf,
+        repositories: Vec<RepoRunSummary>,
+    ) -> Self {
+        let source_findings = repositories
+            .iter()
+            .map(|repository| repository.source_findings.max(repository.findings))
+            .sum();
+        let tool_gaps = repositories
+            .iter()
+            .flat_map(|repository| repository.tool_gaps.clone())
+            .collect::<Vec<_>>();
+        let verification_failures = repositories
+            .iter()
+            .map(|repository| repository.verification_failures)
+            .sum();
+        let configuration_failures = repositories
+            .iter()
+            .map(|repository| repository.configuration_failures)
+            .sum();
+        let healthy = repositories
+            .iter()
+            .filter(|repository| {
+                matches!(
+                    repository.status,
+                    RepoRunStatus::Success | RepoRunStatus::Findings
+                )
+            })
+            .count();
+        let failed = repositories
+            .iter()
+            .filter(|repository| {
+                matches!(
+                    repository.status,
+                    RepoRunStatus::ConfigurationFailure
+                        | RepoRunStatus::TransformationFailure
+                        | RepoRunStatus::SafetyRefusal
+                )
+            })
+            .count();
+        let execution_status = if failed == repositories.len() {
+            ExecutionStatus::Failed
+        } else if healthy == repositories.len() {
+            ExecutionStatus::Complete
+        } else {
+            ExecutionStatus::Partial
+        };
+        let finding_status = if source_findings > 0 {
+            FindingStatus::Findings
+        } else {
+            FindingStatus::Clean
+        };
+        let status = if repositories
+            .iter()
+            .all(|repository| repository.status == RepoRunStatus::Success)
+        {
+            FleetRunStatus::Success
+        } else if repositories.iter().any(|repository| {
+            matches!(
+                repository.status,
+                RepoRunStatus::Success | RepoRunStatus::Findings | RepoRunStatus::PartialSuccess
+            )
+        }) {
+            FleetRunStatus::PartialSuccess
+        } else {
+            FleetRunStatus::Failed
+        };
+        Self {
+            run_id: run_id.into(),
+            fleet_name: fleet_name.into(),
+            status,
+            started_at,
+            finished_at: Utc::now(),
+            repositories,
+            report_dir,
+            execution_status,
+            finding_status,
+            source_findings,
+            tool_gaps,
+            verification_failures,
+            configuration_failures,
+            baseline_comparison: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: String,
@@ -724,6 +1536,7 @@ pub struct SarifLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRun {
     pub tool: SarifTool,
+    #[serde(default)]
     pub results: Vec<SarifResult>,
 }
 
@@ -736,6 +1549,7 @@ pub struct SarifTool {
 pub struct SarifDriver {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "semanticVersion", alias = "semantic_version")]
     pub semantic_version: Option<String>,
     #[serde(default)]
     pub rules: Vec<SarifRule>,
@@ -744,9 +1558,13 @@ pub struct SarifDriver {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRule {
     pub id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    #[serde(rename = "shortDescription", alias = "short_description")]
     pub short_description: SarifMessage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "fullDescription", alias = "full_description")]
     pub full_description: Option<SarifMessage>,
     #[serde(default)]
     pub properties: BTreeMap<String, serde_json::Value>,
@@ -754,7 +1572,9 @@ pub struct SarifRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifResult {
+    #[serde(rename = "ruleId", alias = "rule_id")]
     pub rule_id: String,
+    #[serde(default = "sarif_default_level")]
     pub level: String,
     pub message: SarifMessage,
     pub locations: Vec<SarifLocation>,
@@ -767,28 +1587,35 @@ pub struct SarifResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifFix {
     pub description: SarifMessage,
+    #[serde(rename = "artifactChanges", alias = "artifact_changes")]
     pub artifact_changes: Vec<SarifArtifactChange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifArtifactChange {
+    #[serde(rename = "artifactLocation", alias = "artifact_location")]
     pub artifact_location: SarifArtifactLocation,
     pub replacements: Vec<SarifReplacement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifReplacement {
+    #[serde(rename = "deletedRegion", alias = "deleted_region")]
     pub deleted_region: SarifRegion,
+    #[serde(rename = "insertedContent", alias = "inserted_content")]
+    #[serde(with = "sarif_inserted_content")]
     pub inserted_content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifLocation {
+    #[serde(rename = "physicalLocation", alias = "physical_location")]
     pub physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation", alias = "artifact_location")]
     pub artifact_location: SarifArtifactLocation,
     pub region: SarifRegion,
 }
@@ -802,17 +1629,43 @@ pub struct SarifArtifactLocation {
 pub struct SarifRegion {
     #[serde(rename = "startLine")]
     pub start_line: usize,
-    #[serde(rename = "startColumn")]
+    #[serde(rename = "startColumn", default = "sarif_default_column")]
     pub start_column: usize,
-    #[serde(rename = "endLine")]
+    #[serde(rename = "endLine", default)]
     pub end_line: usize,
-    #[serde(rename = "endColumn")]
+    #[serde(rename = "endColumn", default)]
     pub end_column: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SarifMessage {
     pub text: String,
+}
+
+fn sarif_default_level() -> String {
+    "warning".into()
+}
+fn sarif_default_column() -> usize {
+    1
+}
+
+mod sarif_inserted_content {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    pub fn serialize<S: Serializer>(text: &str, serializer: S) -> Result<S::Ok, S::Error> {
+        super::SarifMessage { text: text.into() }.serialize(serializer)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Content {
+            Standard(super::SarifMessage),
+            Legacy(String),
+        }
+        Ok(match Content::deserialize(deserializer)? {
+            Content::Standard(message) => message.text,
+            Content::Legacy(text) => text,
+        })
+    }
 }
 
 pub fn diagnostics_to_sarif(diagnostics: &[Diagnostic]) -> SarifLog {
@@ -900,6 +1753,63 @@ pub fn diagnostics_to_sarif(diagnostics: &[Diagnostic]) -> SarifLog {
                     .collect(),
             ),
         );
+        properties.insert(
+            "safeFixAvailable".to_owned(),
+            serde_json::Value::Bool(diagnostic.safe_fix_available),
+        );
+        properties.insert(
+            "sourceContext".to_owned(),
+            serde_json::Value::String(
+                format!("{:?}", diagnostic.source_context).to_ascii_lowercase(),
+            ),
+        );
+        properties.insert(
+            "disposition".to_owned(),
+            serde_json::Value::String(diagnostic.disposition.to_string()),
+        );
+        if let Some(producer) = &diagnostic.producer {
+            properties.insert(
+                "producer".to_owned(),
+                serde_json::Value::String(producer.clone()),
+            );
+        }
+        if let Some(producer_version) = &diagnostic.producer_version {
+            properties.insert(
+                "producerVersion".to_owned(),
+                serde_json::Value::String(producer_version.clone()),
+            );
+        }
+        if let Some(native_rule_id) = &diagnostic.native_rule_id {
+            properties.insert(
+                "nativeRuleId".to_owned(),
+                serde_json::Value::String(native_rule_id.clone()),
+            );
+        }
+        if let Some(codeforge_rule_id) = &diagnostic.codeforge_rule_id {
+            properties.insert(
+                "codeforgeRuleId".to_owned(),
+                serde_json::Value::String(codeforge_rule_id.clone()),
+            );
+        }
+        if let Some(class) = diagnostic.transformation_class {
+            properties.insert(
+                "transformationClass".to_owned(),
+                serde_json::Value::String(class.to_string()),
+            );
+        }
+        if !diagnostic.evidence.is_empty() {
+            properties.insert(
+                "evidence".to_owned(),
+                serde_json::Value::Array(
+                    diagnostic
+                        .evidence
+                        .iter()
+                        .cloned()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
+        }
 
         results.push(SarifResult {
             rule_id: diagnostic.rule_id.clone(),
@@ -986,8 +1896,12 @@ pub fn sarif_to_diagnostics(log: &SarifLog, default_language: Language) -> Resul
                 0,
                 region.start_line,
                 region.start_column,
-                region.end_line,
-                region.end_column,
+                region.end_line.max(region.start_line),
+                if region.end_column == 0 {
+                    region.start_column
+                } else {
+                    region.end_column
+                },
             )?;
             diagnostics.push(Diagnostic::new(
                 engine.clone(),
@@ -1078,5 +1992,78 @@ mod tests {
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].rule_id, "PY-001");
         assert_eq!(restored[0].language, Language::Python);
+    }
+
+    #[test]
+    fn sarif_wire_format_is_standard_and_reads_legacy_replacements() {
+        let replacement = SarifReplacement {
+            deleted_region: SarifRegion {
+                start_line: 1,
+                start_column: 1,
+                end_line: 1,
+                end_column: 2,
+            },
+            inserted_content: "new".into(),
+        };
+        let wire = serde_json::to_value(&replacement).expect("serialize");
+        assert_eq!(wire["insertedContent"]["text"], "new");
+        assert_eq!(wire["deletedRegion"]["startLine"], 1);
+        assert!(wire.get("inserted_content").is_none());
+        let legacy = serde_json::json!({
+            "deleted_region": {"startLine": 1, "startColumn": 1, "endLine": 1, "endColumn": 2},
+            "inserted_content": "old"
+        });
+        let restored: SarifReplacement = serde_json::from_value(legacy).expect("legacy");
+        assert_eq!(restored.inserted_content, "old");
+        let standard: SarifReplacement = serde_json::from_value(wire).expect("standard");
+        assert_eq!(standard.inserted_content, "new");
+        let log = diagnostics_to_sarif(&[]);
+        let wire = serde_json::to_value(log).expect("wire");
+        assert!(
+            wire["runs"][0]["tool"]["driver"]
+                .get("semanticVersion")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn execution_and_finding_status_are_separate() {
+        let repository = RepoRunSummary {
+            repository: "repo".to_owned(),
+            path: PathBuf::from("repo"),
+            status: RepoRunStatus::PartialSuccess,
+            languages: vec![Language::Rust],
+            project_profile: None,
+            findings: 3,
+            source_findings: 3,
+            tool_gaps: vec![ToolGap {
+                tool: "dart-analyze".to_owned(),
+                required_for: "Dart / Flutter lint/verify".to_owned(),
+                status: "missing".to_owned(),
+                reason: None,
+                install_hint: None,
+                repository: Some("repo".to_owned()),
+            }],
+            verification_failures: 0,
+            configuration_failures: 0,
+            finding_status: FindingStatus::Findings,
+            pending_transformations: 0,
+            risk: RiskLevel::Low,
+            verification: None,
+            evidence: None,
+            report_path: None,
+            message: String::new(),
+        };
+        let summary = FleetRunSummary::from_repositories(
+            "run",
+            "fleet",
+            Utc::now(),
+            PathBuf::from(".codeforge"),
+            vec![repository],
+        );
+        assert_eq!(summary.execution_status, ExecutionStatus::Partial);
+        assert_eq!(summary.finding_status, FindingStatus::Findings);
+        assert_eq!(summary.source_findings, 3);
+        assert_eq!(summary.tool_gaps.len(), 1);
     }
 }
