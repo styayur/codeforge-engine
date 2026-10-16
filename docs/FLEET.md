@@ -1,23 +1,21 @@
 # Fleet Mode
 
-CodeForge v0.2 adds a local-first repository fleet runtime without changing the
-single-repository transaction model. A fleet run discovers configured
-repositories, schedules one independent repository task at a time, and writes
-one evidence bundle per repository.
+Fleet discovers configured repositories, schedules independent repository tasks
+with bounded concurrency, and writes one evidence bundle per repository. Each
+repository keeps its own transaction; a partial failure does not undo successful
+work in other repositories.
 
 ## Configuration
 
 ```toml
 [fleet]
-name = "styayur"
+name = "example-fleet"
 workspace_root = "E:/Repositories"
 repositories = [
-  "developer-security-workspace",
-  "stem-visual-explorer",
-  "local-context-engine",
-  "codeforge-engine",
+  "service-api",
+  "web-client",
 ]
-exclude = ["styayur.github.io"]
+exclude = ["archived-project"]
 
 [policy]
 require_clean_tree = true
@@ -47,9 +45,9 @@ patterns = [
 ```
 
 `fleet.toml` selects repositories and fleet-wide policy. Each repository may
-still provide `.codeforge.toml` for its native verification commands. Project
-detection only produces suggested commands; it never executes unknown detected
-commands automatically.
+still provide `.codeforge.toml` for its native verification commands. Detected native commands and explicit project commands may execute during
+verification. Review the repository and command configuration before running
+untrusted projects; these processes inherit host permissions.
 
 ## Commands
 
@@ -64,8 +62,10 @@ codeforge fleet report --config fleet.toml --report-dir .codeforge/fleet
 ```
 
 Transformation commands are preview-only unless `--apply` or `--open-pr` is
-provided. `--dry-run` never writes source files. Desktop fleet actions are
-read-only previews by design.
+provided. `--dry-run` and desktop previews do not apply managed transformations.
+They can still run verification commands against the repository; those trusted
+commands may modify files or have other side effects. A preview is not an OS
+sandbox. See [Security](SECURITY.md).
 
 ## Scheduling and status
 

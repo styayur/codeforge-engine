@@ -1,3 +1,5 @@
+> Historical snapshot. Claims and versions on this page are not current guidance.
+
 # Security
 
 ## Defaults

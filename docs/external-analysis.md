@@ -1,5 +1,7 @@
 # Optional external analysis
 
+Experimental, available in current source; not included in the v0.2.2 package.
+
 `codeforge import-sarif report.sarif --root . --language rust` imports local
 SARIF 2.1.0 findings and code-flow paths as JSON. `diagnostic_index` associates
 path steps with findings. The importer accepts standard camelCase and older
@@ -30,7 +32,7 @@ none of these establishes semantic equivalence. Baseline, transactions, rollback
 and Fleet verification remain authoritative. Default scan/review is unchanged.
 
 CodeQL CLI has separate proprietary distribution/use terms, including eligibility
-restrictions: https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md .
+restrictions: [CodeQL CLI license](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
 Users supply their own eligible installation and licensed database/query inputs.
 No upstream implementation, binary or query pack is bundled. No Rust dependency
 was added. Protocol tests cover standard/legacy wire formats; a local fake CLI
