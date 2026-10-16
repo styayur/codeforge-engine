@@ -33,7 +33,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
-criterion = { version = "0.7", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 ignore = "0.4"
 globset = "0.4"
 regex = "1.11"
@@ -41,18 +41,18 @@ semver = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 sha2 = "0.10"
-similar = "2.7"
+similar = "3.2"
 tempfile = "3.20"
 thiserror = "2.0"
 tokio = { version = "1.48", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-toml = "0.9"
+toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 walkdir = "2.5"
 
-tree-sitter = "0.25.10"
+tree-sitter = "0.27.0"
 tree-sitter-c = "0.24.2"
 tree-sitter-go = "0.25.0"
 tree-sitter-java = "0.23.5"
