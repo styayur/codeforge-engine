@@ -198,34 +198,40 @@ impl VerificationPipeline {
             VerificationError::Io(std::io::Error::other("child stderr was not captured"))
         })?;
         let output_limit = spec.max_output_bytes;
-        let stdout_task = tokio::spawn(read_limited(stdout, output_limit));
-        let stderr_task = tokio::spawn(read_limited(stderr, output_limit));
-
-        let deadline = Instant::now() + spec.timeout;
-        let (status, timed_out) = loop {
-            if let Some(status) = child.try_wait()? {
-                break (status, false);
-            }
-            if Instant::now() >= deadline {
-                child.kill().await?;
-                break (child.wait().await?, true);
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+        // A descendant may retain the pipes after the direct child exits. Include
+        // both pipe readers in the deadline, and keep them scoped (no detached tasks).
+        let execution = async {
+            tokio::try_join!(
+                child.wait(),
+                read_limited(stdout, output_limit),
+                read_limited(stderr, output_limit)
+            )
         };
-        let (stdout, stdout_truncated) = stdout_task
-            .await
-            .map_err(|error| VerificationError::Io(std::io::Error::other(error)))??;
-        let (stderr, stderr_truncated) = stderr_task
-            .await
-            .map_err(|error| VerificationError::Io(std::io::Error::other(error)))??;
+        let (status, stdout, stderr, timed_out, output_truncated) =
+            match tokio::time::timeout(spec.timeout, execution).await {
+                Ok(result) => {
+                    let (status, (stdout, out_cut), (stderr, err_cut)) = result?;
+                    (Some(status), stdout, stderr, false, out_cut || err_cut)
+                }
+                Err(_) => {
+                    // The direct child is killed; inherited descendants are not an
+                    // OS sandbox. Never accept incomplete output as verification.
+                    child.start_kill()?;
+                    let status = tokio::time::timeout(Duration::from_secs(1), child.wait())
+                        .await
+                        .ok()
+                        .transpose()?;
+                    (status, String::new(), String::new(), true, true)
+                }
+            };
 
         Ok(ProcessResult {
-            exit_code: status.code(),
+            exit_code: status.and_then(|status| status.code()),
             stdout,
             stderr,
             elapsed: started.elapsed(),
             timed_out,
-            output_truncated: stdout_truncated || stderr_truncated,
+            output_truncated,
         })
     }
 }
@@ -277,6 +283,50 @@ fn summarize_process(result: &ProcessResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "subprocess fixture"]
+    #[allow(clippy::zombie_processes)] // Fixture must exit before its pipe-holding child.
+    fn inherited_pipe_helper() {
+        match std::env::var("CODEFORGE_PIPE_TEST").as_deref() {
+            Ok("parent") => {
+                let _child = std::process::Command::new(std::env::current_exe().expect("test exe"))
+                    .args([
+                        "--exact",
+                        "tests::inherited_pipe_helper",
+                        "--ignored",
+                        "--nocapture",
+                    ])
+                    .env("CODEFORGE_PIPE_TEST", "child")
+                    .spawn()
+                    .expect("helper child");
+            }
+            Ok("child") => std::thread::sleep(Duration::from_secs(3)),
+            _ => {}
+        }
+    }
+
+    #[tokio::test]
+    async fn deadline_includes_inherited_output_pipes() {
+        let spec = CommandSpec::new(
+            std::env::current_exe().expect("test exe"),
+            [
+                "--exact",
+                "tests::inherited_pipe_helper",
+                "--ignored",
+                "--nocapture",
+            ],
+            std::env::current_dir().expect("cwd"),
+        )
+        .env("CODEFORGE_PIPE_TEST", "parent")
+        .timeout(Duration::from_millis(500));
+        let started = Instant::now();
+        let result = VerificationPipeline.run_command(spec).await.expect("run");
+        assert!(result.timed_out);
+        assert!(result.output_truncated);
+        assert!(!result.success());
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
 
     #[tokio::test]
     async fn captures_successful_process() {

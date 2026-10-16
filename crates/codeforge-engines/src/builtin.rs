@@ -609,23 +609,41 @@ fn rust_rule(source: &str, node: Node<'_>) -> Option<Finding> {
             end_byte: node.end_byte(),
             fix: None,
         }),
-        "binary_expression" if text.contains(".len()") && text.contains("== 0") => {
-            let receiver = text.split(".len()").next()?.trim();
-            if receiver.is_empty() {
+        "binary_expression" => {
+            // Inspect immediate operands, never search the complete expression text:
+            // nested boolean expressions can contain unrelated len() and == 0.
+            let operator = node.child_by_field_name("operator")?;
+            let left = node.child_by_field_name("left")?;
+            let right = node.child_by_field_name("right")?;
+            if node_text(source, operator) != "=="
+                || left.kind() != "call_expression"
+                || right.kind() != "integer_literal"
+                || node_text(source, right) != "0"
+            {
                 return None;
             }
+            let function = left.child_by_field_name("function")?;
+            let arguments = left.child_by_field_name("arguments")?;
+            if function.kind() != "field_expression" || arguments.named_child_count() != 0 {
+                return None;
+            }
+            let field = function.child_by_field_name("field")?;
+            if node_text(source, field) != "len" {
+                return None;
+            }
+            let receiver = node_text(source, function.child_by_field_name("value")?);
             Some(Finding {
                 rule_id: "RS-PERFORMANCE-001".to_owned(),
                 severity: Severity::Info,
                 category: DiagnosticCategory::Performance,
-                confidence: Confidence::High,
+                confidence: Confidence::Medium,
                 message: "Length comparison can use is_empty".to_owned(),
-                explanation: "`len() == 0` and `is_empty()` are equivalent for standard containers and avoid a length lookup expression.".to_owned(),
+                explanation: "Syntax suggests an emptiness check. Receiver types and custom method semantics are unresolved; review before applying and retain build/test gates.".to_owned(),
                 start_byte: node.start_byte(),
                 end_byte: node.end_byte(),
                 fix: Some(FixSpec {
                     replacement: format!("{receiver}.is_empty()"),
-                    safe: true,
+                    safe: false,
                     title: "Use is_empty".to_owned(),
                 }),
             })
@@ -925,5 +943,49 @@ mod tests {
             "fn main( {",
         );
         assert!(findings.iter().any(|item| item.rule_id == "PARSE-001"));
+    }
+
+    #[test]
+    fn rust_length_rule_uses_direct_operands_and_does_not_claim_type_evidence() {
+        for expression in [
+            "items.len() >= limit || remaining == 0",
+            "items.len() + remaining == 0",
+            "items.len() == 0xff",
+            "items.len() == 01",
+            "items.len(1) == 0",
+            "items.length() == 0",
+        ] {
+            let source = format!("fn check() {{ let result = {expression}; }}");
+            let findings = analyze_source(
+                "rust-builtin",
+                Language::Rust,
+                Path::new("example.rs"),
+                &source,
+            );
+            assert!(
+                !findings.iter().any(|f| f.rule_id == "RS-PERFORMANCE-001"),
+                "{expression}"
+            );
+        }
+        let source = "fn check() { let result = items.len()==0 || remaining == 0; }";
+        let findings = analyze_source(
+            "rust-builtin",
+            Language::Rust,
+            Path::new("example.rs"),
+            source,
+        );
+        let findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.rule_id == "RS-PERFORMANCE-001")
+            .collect();
+        assert_eq!(findings.len(), 1);
+        let finding = findings[0];
+        assert_eq!(
+            &source[finding.range.start_byte..finding.range.end_byte],
+            "items.len()==0"
+        );
+        assert!(!finding.safe_fix_available);
+        assert_eq!(finding.confidence, Confidence::Medium);
+        assert_eq!(finding.fixes[0].edits[0].replacement, "items.is_empty()");
     }
 }

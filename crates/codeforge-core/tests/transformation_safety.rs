@@ -3,7 +3,7 @@ use std::fs;
 use codeforge_core::{CodeForgeEngine, ReviewOptions};
 
 #[tokio::test]
-async fn safe_ast_fix_is_idempotent_and_parseable() {
+async fn reviewed_standard_string_fix_is_idempotent_and_parseable() {
     let temp = tempfile::tempdir().expect("tempdir");
     let path = temp.path().join("example.rs");
     fs::write(
@@ -20,7 +20,8 @@ async fn safe_ast_fix_is_idempotent_and_parseable() {
         .diagnostics
         .iter()
         .find(|diagnostic| !diagnostic.fixes.is_empty())
-        .expect("safe fix");
+        .expect("reviewable suggestion");
+    assert!(!diagnostic.safe_fix_available);
     let preview = engine
         .preview_fix(&diagnostic.id, 0)
         .expect("preview")
@@ -37,10 +38,7 @@ async fn safe_ast_fix_is_idempotent_and_parseable() {
         .review(ReviewOptions::default())
         .await
         .expect("second review");
-    assert!(
-        !second
-            .diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.rule_id == "RUST-001" && !diagnostic.fixes.is_empty() })
-    );
+    assert!(!second.diagnostics.iter().any(|diagnostic| {
+        diagnostic.rule_id == "RS-PERFORMANCE-001" && !diagnostic.fixes.is_empty()
+    }));
 }

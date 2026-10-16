@@ -2,6 +2,8 @@
 
 mod ai;
 mod config;
+pub mod context;
+pub mod external;
 mod sandbox;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
