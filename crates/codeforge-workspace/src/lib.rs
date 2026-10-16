@@ -23,6 +23,8 @@ const PROJECT_MARKERS: &[&str] = &[
     "build.gradle",
     "build.gradle.kts",
     "go.mod",
+    "pubspec.yaml",
+    "fleet.toml",
     ".codeforge.toml",
 ];
 
@@ -297,6 +299,16 @@ pub fn detect_languages(root: impl AsRef<Path>) -> std::io::Result<Vec<Language>
     }
     if root.join("go.mod").exists() {
         languages.insert(Language::Go);
+    }
+    if root.join("pubspec.yaml").exists() {
+        languages.insert(Language::Dart);
+    }
+    let manager =
+        WorkspaceManager::open(root).map_err(|error| std::io::Error::other(error.to_string()))?;
+    for record in manager.records() {
+        if let Some(language) = record.language {
+            languages.insert(language);
+        }
     }
     let mut ordered = languages.into_iter().collect::<Vec<_>>();
     ordered.sort_by_key(|language| language.as_str());

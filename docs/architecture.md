@@ -7,12 +7,19 @@ CodeForge separates protocol and orchestration from language semantics. There is
 ```text
 UI / CLI
   ↓
+Fleet orchestrator (optional)
+  ↓
 Core orchestrator
   ↓
 Workspace + scheduler + registry + transaction + verification + benchmark
   ↓
 Language adapters and process workers
 ```
+
+The optional fleet layer discovers configured repositories, applies fleet-wide
+policy, schedules independent repository tasks, and aggregates per-repository
+evidence. It never creates a cross-repository atomic transaction. The core
+orchestrator remains responsible for one workspace at a time.
 
 ## Hot path
 
@@ -57,3 +64,8 @@ Each engine is independently evaluated. A missing executable, timeout, malformed
 ## Persistence
 
 Transaction history is stored under `.codeforge/history/`. Every record contains the patch, verification evidence, benchmark results, original content, and transformed content so Apply → Undo can be verified and reversed.
+
+Evidence reports are stored under the configured report directory. A bundle
+contains `report.md`, `report.json`, `diagnostics.sarif`, `patch.diff`,
+`before.json`, and `after.json`. Fleet runs additionally store `run.json` and
+`summary.md` at the run root.

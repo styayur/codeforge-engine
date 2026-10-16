@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use codeforge_baseline::BaselineStore;
 use codeforge_core::{
     BenchmarkSnapshot, CodeForgeEngine, FixPreview, OptimizationReport, ReviewOptions, ReviewReport,
 };
+use codeforge_fleet::{FleetCommand, FleetConfig, FleetRunOptions, FleetRunner};
 use codeforge_protocol::{
-    Diagnostic, EngineStatus, Patch, TransactionRecord, VerificationResult, WorkspaceSummary,
+    BaselineEntry, Diagnostic, EngineStatus, FindingDisposition, FleetRunSummary, Patch, RiskLevel,
+    TransactionRecord, VerificationResult, WorkspaceSummary,
 };
 use serde::Serialize;
 use tauri::State;
@@ -184,6 +187,63 @@ async fn run_benchmark(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn run_fleet(
+    command: String,
+    config_path: PathBuf,
+    risk: Option<String>,
+) -> Result<FleetRunSummary, String> {
+    let operation = match command.to_ascii_lowercase().as_str() {
+        "audit" => FleetCommand::Audit,
+        "format" | "beautify" => FleetCommand::Format,
+        "review" => FleetCommand::Review,
+        "refactor" => FleetCommand::Refactor,
+        "optimize" => FleetCommand::Optimize,
+        "verify" => FleetCommand::Verify,
+        "report" => FleetCommand::Report,
+        other => return Err(format!("unsupported fleet command: {other}")),
+    };
+    let config = FleetConfig::load(&config_path).map_err(|error| error.to_string())?;
+    let mut options = FleetRunOptions::new(operation);
+    options.dry_run = true;
+    options.apply = false;
+    options.open_pr = false;
+    if let Some(risk) = risk {
+        options.risk = match risk.to_ascii_lowercase().as_str() {
+            "low" => RiskLevel::Low,
+            "medium" => RiskLevel::Medium,
+            "high" => RiskLevel::High,
+            "very-high" | "very_high" => RiskLevel::VeryHigh,
+            other => return Err(format!("invalid risk level: {other}")),
+        };
+    }
+    FleetRunner::new(config)
+        .run(options)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn save_finding_disposition(
+    diagnostic: Diagnostic,
+    disposition: FindingDisposition,
+    reason: Option<String>,
+    state: State<'_, DesktopState>,
+) -> Result<BaselineEntry, String> {
+    let engine = current_engine(&state).await?;
+    let path = engine.root().join(".codeforge").join("baseline.json");
+    let mut store = if path.exists() {
+        BaselineStore::load(&path).map_err(|error| error.to_string())?
+    } else {
+        BaselineStore::new()
+    };
+    let entry = store
+        .review(&diagnostic, engine.root(), disposition, reason)
+        .map_err(|error| error.to_string())?;
+    store.save(&path).map_err(|error| error.to_string())?;
+    Ok(entry)
+}
+
 async fn current_engine(state: &State<'_, DesktopState>) -> Result<Arc<CodeForgeEngine>, String> {
     state
         .engine
@@ -208,6 +268,8 @@ pub fn run() {
             run_verification,
             run_optimization,
             run_benchmark,
+            run_fleet,
+            save_finding_disposition,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CodeForge desktop");
