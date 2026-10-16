@@ -4,8 +4,11 @@
 //! tools stay behind explicit process boundaries and are never hard dependencies.
 
 mod builtin;
+mod context;
 mod language;
 mod tools;
+
+pub use context::{SyntaxFacts, SyntaxSymbol, syntax_facts};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

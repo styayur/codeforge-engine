@@ -108,3 +108,24 @@ not an execution failure.
 
 Reviewed baseline behavior is documented in [baseline.md](baseline.md) and
 [regression-ci.md](regression-ci.md).
+
+## Stable tasks and fail-closed application
+
+Fleet writes `tasks.json` beside each run summary. A task key hashes the logical
+repository path, fleet, base commit, command, policy, relevant options and engine
+version. The run ID identifies an attempt; it is intentionally excluded from the
+task key. Repeating the same input yields the same branch. `fleet.task` tracing
+spans carry task/run/repository IDs; evidence events carry the bundle ID.
+
+Automatic application requires passed syntax and every build/test required by
+policy. Missing, skipped and not-run required checks block application; explicit
+failures block even when the corresponding check is optional. These gates do
+not claim semantic equivalence.
+
+PR mode checks all PR states before creation. Lookup failure or ambiguity refuses
+creation. Existing local branches are never reset, closed PRs are not reopened,
+and publishing retries skip empty commits and reuse an existing PR. Starting
+another PR from an existing automation branch is refused: return to the intended
+base branch first. Concurrent cross-machine publication is not a distributed
+transaction; a race may fail safely at Git push or PR creation and can be retried.
+`gh` requests reuse the bounded process runner (30s lookup, 60s creation).

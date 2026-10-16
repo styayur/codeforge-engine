@@ -1536,6 +1536,7 @@ pub struct SarifLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRun {
     pub tool: SarifTool,
+    #[serde(default)]
     pub results: Vec<SarifResult>,
 }
 
@@ -1548,6 +1549,7 @@ pub struct SarifTool {
 pub struct SarifDriver {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "semanticVersion", alias = "semantic_version")]
     pub semantic_version: Option<String>,
     #[serde(default)]
     pub rules: Vec<SarifRule>,
@@ -1556,9 +1558,13 @@ pub struct SarifDriver {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRule {
     pub id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    #[serde(rename = "shortDescription", alias = "short_description")]
     pub short_description: SarifMessage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "fullDescription", alias = "full_description")]
     pub full_description: Option<SarifMessage>,
     #[serde(default)]
     pub properties: BTreeMap<String, serde_json::Value>,
@@ -1566,7 +1572,9 @@ pub struct SarifRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifResult {
+    #[serde(rename = "ruleId", alias = "rule_id")]
     pub rule_id: String,
+    #[serde(default = "sarif_default_level")]
     pub level: String,
     pub message: SarifMessage,
     pub locations: Vec<SarifLocation>,
@@ -1579,28 +1587,35 @@ pub struct SarifResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifFix {
     pub description: SarifMessage,
+    #[serde(rename = "artifactChanges", alias = "artifact_changes")]
     pub artifact_changes: Vec<SarifArtifactChange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifArtifactChange {
+    #[serde(rename = "artifactLocation", alias = "artifact_location")]
     pub artifact_location: SarifArtifactLocation,
     pub replacements: Vec<SarifReplacement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifReplacement {
+    #[serde(rename = "deletedRegion", alias = "deleted_region")]
     pub deleted_region: SarifRegion,
+    #[serde(rename = "insertedContent", alias = "inserted_content")]
+    #[serde(with = "sarif_inserted_content")]
     pub inserted_content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifLocation {
+    #[serde(rename = "physicalLocation", alias = "physical_location")]
     pub physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation", alias = "artifact_location")]
     pub artifact_location: SarifArtifactLocation,
     pub region: SarifRegion,
 }
@@ -1614,17 +1629,43 @@ pub struct SarifArtifactLocation {
 pub struct SarifRegion {
     #[serde(rename = "startLine")]
     pub start_line: usize,
-    #[serde(rename = "startColumn")]
+    #[serde(rename = "startColumn", default = "sarif_default_column")]
     pub start_column: usize,
-    #[serde(rename = "endLine")]
+    #[serde(rename = "endLine", default)]
     pub end_line: usize,
-    #[serde(rename = "endColumn")]
+    #[serde(rename = "endColumn", default)]
     pub end_column: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SarifMessage {
     pub text: String,
+}
+
+fn sarif_default_level() -> String {
+    "warning".into()
+}
+fn sarif_default_column() -> usize {
+    1
+}
+
+mod sarif_inserted_content {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    pub fn serialize<S: Serializer>(text: &str, serializer: S) -> Result<S::Ok, S::Error> {
+        super::SarifMessage { text: text.into() }.serialize(serializer)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Content {
+            Standard(super::SarifMessage),
+            Legacy(String),
+        }
+        Ok(match Content::deserialize(deserializer)? {
+            Content::Standard(message) => message.text,
+            Content::Legacy(text) => text,
+        })
+    }
 }
 
 pub fn diagnostics_to_sarif(diagnostics: &[Diagnostic]) -> SarifLog {
@@ -1855,8 +1896,12 @@ pub fn sarif_to_diagnostics(log: &SarifLog, default_language: Language) -> Resul
                 0,
                 region.start_line,
                 region.start_column,
-                region.end_line,
-                region.end_column,
+                region.end_line.max(region.start_line),
+                if region.end_column == 0 {
+                    region.start_column
+                } else {
+                    region.end_column
+                },
             )?;
             diagnostics.push(Diagnostic::new(
                 engine.clone(),
@@ -1947,6 +1992,38 @@ mod tests {
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].rule_id, "PY-001");
         assert_eq!(restored[0].language, Language::Python);
+    }
+
+    #[test]
+    fn sarif_wire_format_is_standard_and_reads_legacy_replacements() {
+        let replacement = SarifReplacement {
+            deleted_region: SarifRegion {
+                start_line: 1,
+                start_column: 1,
+                end_line: 1,
+                end_column: 2,
+            },
+            inserted_content: "new".into(),
+        };
+        let wire = serde_json::to_value(&replacement).expect("serialize");
+        assert_eq!(wire["insertedContent"]["text"], "new");
+        assert_eq!(wire["deletedRegion"]["startLine"], 1);
+        assert!(wire.get("inserted_content").is_none());
+        let legacy = serde_json::json!({
+            "deleted_region": {"startLine": 1, "startColumn": 1, "endLine": 1, "endColumn": 2},
+            "inserted_content": "old"
+        });
+        let restored: SarifReplacement = serde_json::from_value(legacy).expect("legacy");
+        assert_eq!(restored.inserted_content, "old");
+        let standard: SarifReplacement = serde_json::from_value(wire).expect("standard");
+        assert_eq!(standard.inserted_content, "new");
+        let log = diagnostics_to_sarif(&[]);
+        let wire = serde_json::to_value(log).expect("wire");
+        assert!(
+            wire["runs"][0]["tool"]["driver"]
+                .get("semanticVersion")
+                .is_some()
+        );
     }
 
     #[test]
