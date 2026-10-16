@@ -1,0 +1,35 @@
+[package]
+name = "codeforge-fleet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Repository fleet orchestration for CodeForge Engine"
+repository.workspace = true
+
+[dependencies]
+codeforge-core.workspace = true
+codeforge-engines.workspace = true
+codeforge-git.workspace = true
+codeforge-protocol.workspace = true
+codeforge-transform.workspace = true
+codeforge-verification.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+globset.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "fleet"
+harness = false
