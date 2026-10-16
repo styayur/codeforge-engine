@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 codeforge-protocol.workspace = true
 codeforge-verification.workspace = true
+chrono.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
