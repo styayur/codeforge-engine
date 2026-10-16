@@ -1,0 +1,1 @@
+{"diagnostics":[{"code":"unused_import","severity":"INFO","problemMessage":"Unused import","location":{"file":"lib/example.dart","range":{"start":{"line":3,"column":1},"end":{"line":3,"column":12}}}}]}
