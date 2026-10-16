@@ -1,0 +1,7 @@
+[commands.format]
+program = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[commands.lint]
+program = "cargo"
+args = ["clippy"]

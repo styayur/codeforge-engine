@@ -74,6 +74,7 @@ impl BenchmarkRunner {
         before_command: CommandSpec,
         after_command: CommandSpec,
     ) -> Result<BenchmarkResult, BenchmarkError> {
+        let command = Some(before_command.command_line());
         let before = self.measure(before_command).await?;
         let after = self.measure(after_command).await?;
         if before.median == 0.0 {
@@ -85,7 +86,11 @@ impl BenchmarkRunner {
             before,
             after,
             delta_percent,
+            warmup: self.warmup,
+            samples: self.samples,
+            command,
             environment: environment(),
+            timestamp: chrono::Utc::now(),
         })
     }
 }
