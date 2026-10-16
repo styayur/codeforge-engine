@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use codeforge_protocol::{
-    Confidence, Diagnostic, DiagnosticCategory, Fix, Language, RiskLevel, Severity, SourceRange,
-    TextEdit, Transformation, TransformationClass,
+    Confidence, Diagnostic, DiagnosticCategory, Fix, Language, RiskLevel, Severity, SourceContext,
+    SourceRange, TextEdit, Transformation, TransformationClass,
 };
 use tree_sitter::Node;
 
@@ -111,18 +111,31 @@ fn finding_to_diagnostic(
     let range = SourceRange::from_offsets(source, finding.start_byte, finding.end_byte)
         .unwrap_or_else(|_| SourceRange::new(0, 0, 1, 1, 1, 1).expect("empty range"));
     let transformation_class = class_for_rule(&finding.rule_id, finding.category);
+    let source_context = SourceContext::classify_at(path, source, finding.start_byte);
+    let (severity, confidence, message, explanation) = adjust_finding_for_context(
+        &finding.rule_id,
+        finding.severity,
+        finding.confidence,
+        finding.message,
+        finding.explanation,
+        source,
+        finding.start_byte,
+        source_context,
+    );
     let mut diagnostic = Diagnostic::new(
         engine,
         language,
         finding.rule_id,
-        finding.severity,
+        severity,
         finding.category,
-        finding.confidence,
+        confidence,
         path.to_path_buf(),
         range.clone(),
-        finding.message,
+        message,
     )
-    .with_explanation(finding.explanation)
+    .with_explanation(explanation)
+    .with_source_context(source_context)
+    .with_codeforge_rule_placeholder()
     .with_transformation_class(transformation_class);
     if let Some(fix) = finding.fix {
         diagnostic = diagnostic.with_fix(Fix::new(
@@ -136,6 +149,56 @@ fn finding_to_diagnostic(
         ));
     }
     diagnostic
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjust_finding_for_context(
+    rule_id: &str,
+    severity: Severity,
+    confidence: Confidence,
+    mut message: String,
+    mut explanation: String,
+    source: &str,
+    start_byte: usize,
+    context: SourceContext,
+) -> (Severity, Confidence, String, String) {
+    if rule_id == "RS-CORRECTNESS-001"
+        && matches!(
+            context,
+            SourceContext::Test | SourceContext::Benchmark | SourceContext::Fixture
+        )
+    {
+        message = format!("{message} (non-production context)");
+        explanation.push_str(
+            " This occurrence is in test, benchmark, or fixture context and is informational unless the assertion itself is wrong.",
+        );
+        return (Severity::Info, Confidence::Low, message, explanation);
+    }
+    if rule_id == "RS-SECURITY-001" {
+        if has_local_safety_argument(source, start_byte) {
+            message = "Unsafe block has a local safety argument; verify the invariant".to_owned();
+            explanation = "The unsafe boundary documents a safety invariant. Review the invariant and the surrounding ownership, lifetime, and bounds assumptions instead of treating unsafe presence as a vulnerability.".to_owned();
+            return (Severity::Info, Confidence::Low, message, explanation);
+        }
+        message =
+            "Unsafe block requires a concrete safety justification and risk review".to_owned();
+        explanation = "The unsafe boundary does not have an adjacent safety argument. Identify the invariant, ownership transfer, lifetime, bounds, and nullability assumptions.".to_owned();
+        return (Severity::Warning, Confidence::Medium, message, explanation);
+    }
+    (severity, confidence, message, explanation)
+}
+
+fn has_local_safety_argument(source: &str, start_byte: usize) -> bool {
+    let prefix = &source[..start_byte.min(source.len())];
+    let start = prefix.rfind('\n').map_or(0, |index| index + 1);
+    let before = &source[start.saturating_sub(600)..start];
+    before.lines().rev().take(10).any(|line| {
+        let line = line.trim().to_ascii_lowercase();
+        line.starts_with("// safety:")
+            || line.starts_with("# safety:")
+            || line.contains("safety:")
+            || line.contains("safety invariant")
+    })
 }
 
 fn collect_tree_findings(
@@ -258,29 +321,18 @@ fn analyze_text_source(
             }
         }
         Language::Toml => {
-            let mut keys = std::collections::BTreeSet::new();
-            for line in source.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with('[') || trimmed.starts_with('#') {
-                    continue;
-                }
-                if let Some((key, _)) = trimmed.split_once('=') {
-                    let key = key.trim();
-                    if !keys.insert(key.to_owned()) {
-                        let start = source.find(line).unwrap_or(0);
-                        findings.push(text_finding(
-                            "CF-TOML-001",
-                            Severity::Error,
-                            DiagnosticCategory::Correctness,
-                            Confidence::Medium,
-                            format!("Duplicate TOML key in this table: {key}"),
-                            "Duplicate keys can change tool configuration silently.",
-                            source,
-                            start,
-                            start + line.len(),
-                        ));
-                    }
-                }
+            if let Err(error) = toml::from_str::<toml::Value>(source) {
+                findings.push(text_finding(
+                    "CF-TOML-001",
+                    Severity::Error,
+                    DiagnosticCategory::Correctness,
+                    Confidence::High,
+                    format!("Invalid TOML: {error}"),
+                    "TOML must parse before tools can consume the configuration.",
+                    source,
+                    0,
+                    source.len().min(1),
+                ));
             }
         }
         Language::Html => {
@@ -557,23 +609,41 @@ fn rust_rule(source: &str, node: Node<'_>) -> Option<Finding> {
             end_byte: node.end_byte(),
             fix: None,
         }),
-        "binary_expression" if text.contains(".len()") && text.contains("== 0") => {
-            let receiver = text.split(".len()").next()?.trim();
-            if receiver.is_empty() {
+        "binary_expression" => {
+            // Inspect immediate operands, never search the complete expression text:
+            // nested boolean expressions can contain unrelated len() and == 0.
+            let operator = node.child_by_field_name("operator")?;
+            let left = node.child_by_field_name("left")?;
+            let right = node.child_by_field_name("right")?;
+            if node_text(source, operator) != "=="
+                || left.kind() != "call_expression"
+                || right.kind() != "integer_literal"
+                || node_text(source, right) != "0"
+            {
                 return None;
             }
+            let function = left.child_by_field_name("function")?;
+            let arguments = left.child_by_field_name("arguments")?;
+            if function.kind() != "field_expression" || arguments.named_child_count() != 0 {
+                return None;
+            }
+            let field = function.child_by_field_name("field")?;
+            if node_text(source, field) != "len" {
+                return None;
+            }
+            let receiver = node_text(source, function.child_by_field_name("value")?);
             Some(Finding {
                 rule_id: "RS-PERFORMANCE-001".to_owned(),
                 severity: Severity::Info,
                 category: DiagnosticCategory::Performance,
-                confidence: Confidence::High,
+                confidence: Confidence::Medium,
                 message: "Length comparison can use is_empty".to_owned(),
-                explanation: "`len() == 0` and `is_empty()` are equivalent for standard containers and avoid a length lookup expression.".to_owned(),
+                explanation: "Syntax suggests an emptiness check. Receiver types and custom method semantics are unresolved; review before applying and retain build/test gates.".to_owned(),
                 start_byte: node.start_byte(),
                 end_byte: node.end_byte(),
                 fix: Some(FixSpec {
                     replacement: format!("{receiver}.is_empty()"),
-                    safe: true,
+                    safe: false,
                     title: "Use is_empty".to_owned(),
                 }),
             })
@@ -873,5 +943,49 @@ mod tests {
             "fn main( {",
         );
         assert!(findings.iter().any(|item| item.rule_id == "PARSE-001"));
+    }
+
+    #[test]
+    fn rust_length_rule_uses_direct_operands_and_does_not_claim_type_evidence() {
+        for expression in [
+            "items.len() >= limit || remaining == 0",
+            "items.len() + remaining == 0",
+            "items.len() == 0xff",
+            "items.len() == 01",
+            "items.len(1) == 0",
+            "items.length() == 0",
+        ] {
+            let source = format!("fn check() {{ let result = {expression}; }}");
+            let findings = analyze_source(
+                "rust-builtin",
+                Language::Rust,
+                Path::new("example.rs"),
+                &source,
+            );
+            assert!(
+                !findings.iter().any(|f| f.rule_id == "RS-PERFORMANCE-001"),
+                "{expression}"
+            );
+        }
+        let source = "fn check() { let result = items.len()==0 || remaining == 0; }";
+        let findings = analyze_source(
+            "rust-builtin",
+            Language::Rust,
+            Path::new("example.rs"),
+            source,
+        );
+        let findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.rule_id == "RS-PERFORMANCE-001")
+            .collect();
+        assert_eq!(findings.len(), 1);
+        let finding = findings[0];
+        assert_eq!(
+            &source[finding.range.start_byte..finding.range.end_byte],
+            "items.len()==0"
+        );
+        assert!(!finding.safe_fix_available);
+        assert_eq!(finding.confidence, Confidence::Medium);
+        assert_eq!(finding.fixes[0].edits[0].replacement, "items.is_empty()");
     }
 }

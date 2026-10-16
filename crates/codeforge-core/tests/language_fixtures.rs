@@ -13,7 +13,7 @@ fn fixture(name: &str) -> PathBuf {
 async fn assert_language(language: Language, directory: &str, bad_fragment: &str) {
     let engine = CodeForgeEngine::open(fixture(directory)).expect("open fixture");
     let report = engine
-        .review(ReviewOptions {
+        .review_including_non_production(ReviewOptions {
             languages: vec![language],
             changed_only: false,
             include_external: false,
@@ -77,7 +77,7 @@ async fn go_fixture_suite() {
 async fn dart_fixture_suite() {
     let engine = CodeForgeEngine::open(fixture("dart")).expect("open fixture");
     let report = engine
-        .review(ReviewOptions {
+        .review_including_non_production(ReviewOptions {
             languages: vec![Language::Dart],
             changed_only: false,
             include_external: false,
@@ -98,7 +98,7 @@ async fn dart_fixture_suite() {
 async fn powershell_fixture_suite() {
     let engine = CodeForgeEngine::open(fixture("powershell")).expect("open fixture");
     let report = engine
-        .review(ReviewOptions {
+        .review_including_non_production(ReviewOptions {
             languages: vec![Language::PowerShell],
             changed_only: false,
             include_external: false,
@@ -119,7 +119,7 @@ async fn powershell_fixture_suite() {
 async fn markdown_fixture_suite() {
     let engine = CodeForgeEngine::open(fixture("markdown")).expect("open fixture");
     let report = engine
-        .review(ReviewOptions {
+        .review_including_non_production(ReviewOptions {
             languages: vec![Language::Markdown],
             changed_only: false,
             include_external: false,

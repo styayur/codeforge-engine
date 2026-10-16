@@ -1,6 +1,6 @@
 id = "python-ruff"
 name = "Ruff"
-version = "0.2.0"
+version = "0.2.1"
 kind = "local_executable"
 languages = ["python"]
 capabilities = ["lint", "format", "fix"]

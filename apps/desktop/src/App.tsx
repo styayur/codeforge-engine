@@ -306,10 +306,19 @@ function FleetRepositoryDetail({ repository }: { repository: RepoRunSummary }) {
         <div className="fleet-summary-grid">
           <Metric label="Status" value={repository.status} />
           <Metric label="Risk" value={repository.risk} />
-          <Metric label="Findings" value={String(repository.findings)} />
+          <Metric label="Source findings" value={String(repository.source_findings ?? repository.findings)} />
+          <Metric label="Tool gaps" value={String(repository.tool_gaps?.length ?? 0)} />
+          <Metric label="Finding status" value={repository.finding_status ?? "unknown"} />
           <Metric label="Pending" value={String(repository.pending_transformations)} />
         </div>
         <p className="muted">{repository.message}</p>
+        {repository.tool_gaps && repository.tool_gaps.length > 0 && (
+          <div className="patch-file-list">
+            {repository.tool_gaps.map((gap) => (
+              <code key={`${gap.tool}-${gap.required_for}`}>{gap.tool}: {gap.status}</code>
+            ))}
+          </div>
+        )}
         {repository.report_path && <code className="report-path">{repository.report_path}</code>}
       </div>
       <div className="surface">
@@ -349,7 +358,12 @@ function ReviewView({
   verification?: VerificationResult;
   loading: boolean;
 }) {
-  const { selectDiagnostic, previewFix, applyPreview, runVerification, undoTransaction, history } = useAppStore();
+  const { selectDiagnostic, previewFix, applyPreview, runVerification, undoTransaction, history, saveDisposition } = useAppStore();
+  const saveReviewDisposition = (disposition: "accepted" | "false_positive" | "human_review") => {
+    const reason = disposition === "human_review" ? window.prompt("Reason for human review?") ?? undefined : window.prompt("Why should this finding be saved with this disposition?") ?? undefined;
+    if (disposition !== "human_review" && !reason?.trim()) return;
+    void saveDisposition(disposition, reason?.trim() || undefined);
+  };
   return (
     <section className="review-layout">
       <ProblemList diagnostics={diagnostics} selectedId={selectedId} onSelect={selectDiagnostic} />
@@ -378,6 +392,19 @@ function ReviewView({
             <button className="button secondary" disabled={loading} onClick={() => void runVerification()}>
               <CircleGauge size={15} /> Verify
             </button>
+            {selected && (
+              <>
+                <button className="button ghost" disabled={loading} onClick={() => saveReviewDisposition("accepted")}>
+                  Save accepted
+                </button>
+                <button className="button ghost" disabled={loading} onClick={() => saveReviewDisposition("false_positive")}>
+                  Save false positive
+                </button>
+                <button className="button ghost" disabled={loading} onClick={() => saveReviewDisposition("human_review")}>
+                  Human review
+                </button>
+              </>
+            )}
           </div>
         </div>
         <DiffPreview diagnostic={selected} preview={preview} />

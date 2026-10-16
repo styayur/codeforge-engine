@@ -40,6 +40,16 @@ export interface Diagnostic {
   source?: string;
   fixes: Fix[];
   tags: string[];
+  producer?: string;
+  producer_version?: string;
+  native_rule_id?: string;
+  codeforge_rule_id?: string;
+  source_context?: string;
+  symbol?: string;
+  rule_version?: string;
+  disposition?: string;
+  disposition_reason?: string;
+  reviewed_at?: string;
 }
 
 export interface LanguageStats { files: number; bytes: number; }
@@ -226,6 +236,17 @@ export interface RepoRunSummary {
   languages: string[];
   project_profile?: ProjectProfile;
   findings: number;
+  source_findings?: number;
+  tool_gaps?: Array<{
+    tool: string;
+    required_for: string;
+    status: string;
+    reason?: string;
+    install_hint?: string;
+  }>;
+  verification_failures?: number;
+  configuration_failures?: number;
+  finding_status?: string;
   pending_transformations: number;
   risk: string;
   verification?: VerificationResult;
@@ -238,6 +259,18 @@ export interface FleetRunSummary {
   run_id: string;
   fleet_name: string;
   status: string;
+  execution_status?: string;
+  finding_status?: string;
+  source_findings?: number;
+  tool_gaps?: Array<{
+    tool: string;
+    required_for: string;
+    status: string;
+    reason?: string;
+    install_hint?: string;
+  }>;
+  verification_failures?: number;
+  configuration_failures?: number;
   started_at: string;
   finished_at: string;
   repositories: RepoRunSummary[];
