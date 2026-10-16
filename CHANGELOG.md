@@ -1,5 +1,57 @@
 # Changelog
 
+## v1.0.0
+
+**Unreleased draft.** Package versions remain 0.2.2. Experimental commands below
+are implemented in the current source tree but absent from the v0.2.2 package.
+
+### Added
+
+- On-demand source context with exact positions, hashes and bounded output (Experimental).
+- Heuristic code relations, change impact and related-test suggestions (Experimental).
+- Bounded local SARIF finding/path import and optional user-supplied CodeQL CLI execution (Experimental).
+- User guides distinguishing analysis provenance, verification results and application authority.
+
+### Changed
+
+- Current SARIF exports use standard camelCase fields while imports accept legacy CodeForge field names.
+- Project documentation centers on analysis, context, transformation, verification and evidence; development history is archived without discarding it.
+- Stable workflows, experimental integrations and future scope are documented separately.
+
+### Performance
+
+- Context and external analysis remain opt-in and outside default scan/review/Fleet execution.
+- Recorded startup measurements show substantial environment variation; no default scan speedup is claimed.
+- The merged CLI is approximately 2.81% larger than the measured original, with no added Rust dependencies. See the benchmark report for scope and raw samples.
+
+### Security
+
+- Imported findings/path evidence cannot authorize fixes or replace build/test gates.
+- External process timeout/output limits and SARIF input bounds are explicit; neither is described as an OS sandbox.
+- Corrected claims about universal report redaction and the meaning of successful equivalence commands.
+
+## v0.2.2 — 2026-10-13
+
+Published prerelease strengthening Fleet automation and Rust review safety.
+
+### Added
+
+- Stable task identity, deterministic PR branches and task/evidence tracing.
+
+### Changed
+
+- PR retries inspect all PR states and refuse ambiguous lookup or unsafe branch reuse.
+- Rust length-to-`is_empty()` proposals are medium-risk heuristic findings, excluded from automatic safe-fix application.
+
+### Performance
+
+- No new Rust dependencies or resident services; startup measurements do not establish a speedup.
+
+### Security
+
+- Fleet requires positive results for policy-required build/test checks and blocks explicit verification failures.
+- Frontend source-map-js updated to 1.2.2.
+
 ## v0.2.1 - 2026-10-03
 
 Precision and baseline maintenance release.

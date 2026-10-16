@@ -1,9 +1,15 @@
 # Benchmarks
 
-The Criterion suite lives in `crates/codeforge-core/benches/runtime.rs`.
+Run the existing suites:
 
 ```bash
 cargo bench -p codeforge-core --bench runtime
+cargo bench -p codeforge-fleet --bench fleet
 ```
 
-It measures startup, 1,000-file indexing, single-file analysis, incremental review, AST search, and diagnostic aggregation. Results are written by Criterion under `target/criterion`; release-quality runs should be copied to `benchmarks/results/` with the exact environment and command.
+Criterion writes to `target/criterion`. See the current
+[benchmark report](../docs/benchmarking.md) for methodology, all recorded startup
+results and limits. Historical captures are preserved under
+[`docs/archive/benchmark-history`](../docs/archive/benchmark-history).
+Keep new release-quality captures with their exact command, revision, hardware
+and environment; never replace raw history with a best-case summary.

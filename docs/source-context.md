@@ -1,12 +1,15 @@
 # On-demand context and impact suggestions
 
-```
+Experimental, available in current source; not included in the v0.2.2 package.
+
+```bash
 codeforge context . --query verification --limit 10 --max-bytes 32768
 codeforge impact . --depth 4 --graph
 ```
 
 Both commands print JSON, run locally, and read source without applying changes,
-starting tools or calling a model. They reuse WorkspaceManager ignore rules,
+starting analyzer tools or calling a model. Impact requires and invokes local
+Git to inspect changes. They reuse WorkspaceManager ignore rules,
 existing Tree-sitter grammars and Git status (staged, unstaged and untracked).
 They are not invoked by scan/review/Fleet or by the verification gate.
 
