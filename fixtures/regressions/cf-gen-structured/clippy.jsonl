@@ -1,0 +1,1 @@
+{"reason":"compiler-message","message":{"level":"warning","message":"unnecessary clone","code":{"code":"clippy::redundant_clone"},"spans":[{"file_name":"src/lib.rs","is_primary":true,"line_start":10,"column_start":5,"line_end":10,"column_end":20}]}}

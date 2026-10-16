@@ -1,0 +1,1 @@
+[{"RuleName":"PSAvoidUsingWriteHost","Severity":"Warning","Message":"Avoid Write-Host","ScriptPath":"scripts/example.ps1","Line":4,"Column":2}]
