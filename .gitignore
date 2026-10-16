@@ -6,6 +6,9 @@
 **/.tmp/
 **/*.tsbuildinfo
 .codeforge/history/
+.codeforge/reports/
+.codeforge/fleet/
+.codeforge/cache/
 *.log
 .DS_Store
 Thumbs.db
