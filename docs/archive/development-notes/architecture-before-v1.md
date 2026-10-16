@@ -1,3 +1,5 @@
+> Historical snapshot. Claims and versions on this page are not current guidance.
+
 # Architecture
 
 CodeForge separates protocol and orchestration from language semantics. There is no forced cross-language AST. Each adapter retains its native parser, compiler, test runner, and verifier.

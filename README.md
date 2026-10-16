@@ -1,253 +1,154 @@
-<p align="center">
-  <img src="apps/desktop/src-tauri/icons/128x128.png" alt="CodeForge Engine logo" width="112" />
-</p>
+# CodeForge Engine
 
-<h1 align="center">CodeForge Engine</h1>
+**Verified code analysis and transformation engine.** Inspect a repository,
+review proposed changes, run its verification commands, and keep the evidence
+that explains each decision.
 
-<p align="center"><strong>Local-first, verification-driven, language-aware code transformation runtime.</strong></p>
+[![CI](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-<p align="center">
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" /></a>
-  <img alt="Rust" src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" />
-  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-2f6f8f.svg" />
-</p>
+[Documentation](docs/README.md) · [Latest published prerelease: v0.2.2](https://github.com/styayur/codeforge-engine/releases/tag/v0.2.2) · [Changelog](CHANGELOG.md)
 
-![CodeForge Engine desktop screenshot](docs/assets/screenshot.png)
+**v1.0.0 is an unreleased candidate.** There is no published stable 1.0 binary.
+This README describes the current source tree. Context, impact and external
+SARIF/CodeQL commands are available from source and are absent from v0.2.2.
 
-CodeForge is not a unified cross-language AST and not a GUI wrapper around six linters. It is a shared protocol and execution runtime for workspaces, diagnostics, transformations, verification, benchmarks, transactions, and engine adapters. Each language keeps its native grammar, tooling, and semantics.
+## Why CodeForge
 
-CodeForge can review one workspace or orchestrate verified transformations across a repository fleet. Fleet runs keep one independent transaction per repository and emit evidence for every change.
+A finding is useful only when you can locate its source, understand its limits,
+and decide what evidence a proposed fix needs. CodeForge connects **analysis,
+context, transformation, verification and evidence** in one local workflow.
+It is an engineering tool for reviewing and validating changes, rather than an
+AI coding assistant. Lint results are inputs to that workflow, not its endpoint.
 
-The current `v0.2.1` is a precision and baseline maintenance release for the verification-driven repository fleet runtime. It adds reviewed finding dispositions, stable fingerprints, regression-only CI, separate tool-gap reporting, a local toolchain doctor, source-context classification, native diagnostic provenance, and targeted precision fixes for TOML and Rust rules.
+Languages retain their native parsers and tools. Built-in analysis works offline;
+optional compilers and analyzers come from your own installation. A reviewed
+baseline keeps known findings visible while CI identifies new regressions.
 
-CodeForge does not aim for zero findings. A reviewed baseline lets CI distinguish known debt from new regressions. Known does not mean ignored: accepted findings remain visible and auditable.
+## Core capabilities and maturity
 
-## Core capabilities
+Stable below means implemented with regression coverage; it does not imply that
+every language rule or suggested transformation is semantically proven.
 
-- Workspace indexing with Git-aware changed-file selection.
-- Hot/warm/cold execution model with cancellation, debouncing, priority, timeout, and concurrency limits.
-- Unified `Diagnostic`, `Fix`, `Transformation`, `VerificationResult`, `BenchmarkResult`, `TaskRecord`, and `EngineMetadata` contracts.
-- Tree-sitter parsing and built-in heuristic rules across code, documentation, and configuration adapters.
-- Preview-first transformations. Every edit produces a unified patch and persistent undo history.
-- Sandbox optimization flow: candidates are applied to a temporary workspace, verified, and benchmarked there before a user can apply anything.
-- Structured process execution with explicit executable paths and argument arrays. No shell interpolation.
-- SARIF 2.1.0 export from unified diagnostics.
-- Local-only defaults: no telemetry, no source upload, no cloud dependency, AI disabled.
-- Repository fleet configuration, independent repository transactions, partial-success reporting, and per-repository evidence bundles.
-- Reviewed `.codeforge/baseline.json` with exact, structural, and context-relocated finding matching.
+| Status | Capability | Boundary |
+|---|---|---|
+| Stable | Multi-language parsing and review | Tree-sitter and selected rules; coverage differs by language |
+| Stable | Transformation previews, transactions and rollback | Inspect patches; verification requirements depend on the workflow |
+| Stable | Configurable verification pipeline | Records actual command results, including unavailable/skipped checks |
+| Stable | Baselines and Fleet automation | Independent repository transactions, deterministic task identity and guarded PR creation |
+| Stable | SARIF export and evidence bundles | Current source emits standard SARIF; findings do not authorize edits |
+| Experimental, source only | Context extraction and impact/test suggestions | Exact excerpts; heuristic graph relations, bounded coverage |
+| Experimental, source only | SARIF path import and optional CodeQL CLI adapter | Untrusted external evidence; real CodeQL integration has not been validated |
+| Future | Incremental parse caching, broader semantic resolution and verifier integrations | No installation or execution implied |
 
-## Supported languages
-
-| Language | Parse | Review | Safe fixes | Transformation preview | Verification | Benchmark |
-|---|---:|---:|---:|---:|---:|---:|
-| Python | Yes | Built-in | `None` identity, bare `except` | Yes | pytest when available | Configured command |
-| Rust | Yes | Built-in | `len() == 0` → `is_empty()` | Yes | Cargo check/test | Cargo bench |
-| C | Yes | Built-in | Empty-string checks (review required) | Yes | Optional CMake/config | Configured command |
-| JavaScript | Yes | Built-in | `var`, loose equality (review required) | Yes | package scripts | package `bench` |
-| TypeScript | Yes | Built-in | Loose equality (review required) | Yes | package scripts | package `bench` |
-| Java | Yes | Built-in | String literal equality (review required) | Yes | Maven/Gradle tests | Configured command |
-| Go | Yes | Built-in | `strings.Index(...) >= 0` → `strings.Contains` | Yes | `go test ./...` | `go test -bench` |
-| Dart / Flutter | Yes | Heuristic + Tree-sitter | Parse/review/format in v0.2 | Experimental | `dart analyze`, `flutter test` | Configured command |
-| PowerShell | Yes | Heuristic + Tree-sitter | Parse/review/format when available | Review only | `pwsh` syntax, PSScriptAnalyzer when available | Configured command |
-| Markdown / JSON / YAML / TOML / HTML / CSS | Structural review | Built-in checks | Format/lint through local adapters | Preview only | Adapter-dependent | Configured command |
-
-External engines are not bundled. CodeForge discovers local executables such as Ruff, Clippy, clang-tidy, Oxlint, Maven/Gradle, Staticcheck, and ast-grep. A missing backend does not prevent the workspace from opening.
+See [Engines](docs/ENGINES.md) for language coverage and optional tool status.
 
 ## Architecture
 
 ```text
-Desktop UI / CLI
-       │
-       ▼
-  codeforge-core
-       │
-       ├── workspace + Git
-       ├── scheduler + cancellation
-       ├── engine registry
-       ├── diagnostics aggregator
-       ├── transaction manager
-       ├── verification pipeline
-       ├── benchmark runner
-       └── plugin manifests
-              │
-              ├── Python adapter
-              ├── Rust adapter
-              ├── C adapter
-              ├── JavaScript / TypeScript adapter
-              ├── Java worker adapter
-              └── Go adapter
+Repository
+  ↓
+Analysis engines → Diagnostics + reviewed baseline
+  ↓
+Context (on demand; not a mandatory scan stage)
+  ↓
+Transformation preview → transaction
+  ↓
+Verification (configured syntax / build / tests / other commands)
+  ↓
+Evidence + policy decision + apply / rollback
 ```
 
-Key Rust crates:
+The CLI and desktop share the same core. Fleet wraps independent repository
+operations; it does not create a cross-repository atomic transaction.
+[Architecture](docs/ARCHITECTURE.md) explains boundaries and persistence.
 
-| Crate | Responsibility |
-|---|---|
-| `codeforge-protocol` | Stable JSON contracts and SARIF mapping |
-| `codeforge-baseline` | Stable fingerprints, reviewed baseline lifecycle, and regression classification |
-| `codeforge-workspace` | Indexing, hashing, markers, language detection |
-| `codeforge-scheduler` | Priority queue, timeout, cancellation, debouncing |
-| `codeforge-diagnostics` | Deduplication, severity normalization, source merging |
-| `codeforge-transform` | Preview, unified diff, apply, rollback, persistent undo |
-| `codeforge-verification` | Structured process execution and verification stages |
-| `codeforge-benchmark` | Real timing samples, median, variance, delta |
-| `codeforge-plugin` | Declarative manifests and permission checks |
-| `codeforge-git` | Branch, changed files, staged/unstaged, diff ranges |
-| `codeforge-engines` | Native Tree-sitter adapters and local tool discovery |
-| `codeforge-fleet` | Fleet configuration, discovery, scheduling, policy, PR mode, evidence bundles |
-| `codeforge-core` | Shared orchestration used by CLI and desktop |
+## Evidence model
 
-See [architecture.md](docs/architecture.md) for the execution model and data flow.
+**Finding a problem is not proof that a fix is correct.** Heuristic suggestions,
+static analysis, external analysis and successful compiler/test runs are distinct
+evidence. A benchmark measures performance; a configured equivalence command
+records what that command checked, not a built-in proof of program equivalence.
 
-## Verification model
-
-CodeForge distinguishes evidence levels instead of calling every passing test a proof:
-
-```text
-Unverified, Heuristic, Compiled, Tested, Benchmarked, Verified
-```
-
-- `Heuristic`: a parser or rule produced a finding; semantics are not guaranteed.
-- `Compiled`: a build/typecheck command passed.
-- `Tested`: the configured test command passed.
-- `Benchmarked`: real before/after timing samples were collected; this is not semantic equivalence.
-- `Verified`: an equivalence/formal verifier passed for the exact transformation.
-- Benchmark percentages are displayed only when real before/after timing samples exist.
+Read [Evidence Model](docs/EVIDENCE_MODEL.md) before interpreting a report or
+automating application. Fleet requires successful checks mandated by policy;
+missing required tools do not count as a pass.
 
 ## Installation
 
-### CLI from source
+Use the desktop packages and `checksums.txt` on the
+[v0.2.2 prerelease](https://github.com/styayur/codeforge-engine/releases/tag/v0.2.2)
+page for Windows/Linux. Windows requires WebView2; Linux desktop builds require
+WebKitGTK. A desktop package does not install optional language tools.
+
+For the current CLI, including the experimental source-only commands:
 
 ```bash
-cargo install --path crates/codeforge-cli
+git clone https://github.com/styayur/codeforge-engine.git
+cd codeforge-engine
+cargo install --locked --path crates/codeforge-cli
+codeforge --help
+```
+
+This builds the checked-out revision, whose package version is currently 0.2.2;
+it is not equivalent to checking out tag v0.2.2. For reproducibility, record
+`git rev-parse HEAD`. Use current stable Rust; see
+[Development](docs/DEVELOPMENT.md) for platform prerequisites.
+
+## CLI examples
+
+Run these from the repository you want to inspect:
+
+```bash
 codeforge scan .
 codeforge review . --json
 codeforge review . --sarif > codeforge.sarif
-```
-
-### Desktop
-
-```bash
-cd apps/desktop
-pnpm install
-pnpm tauri build
-```
-
-Windows bundles `.msi` and NSIS `.exe`; Linux bundles `.AppImage` and `.deb` in the release workflow.
-
-## CLI
-
-```bash
-codeforge scan .
-codeforge lint . --changed
-codeforge review . --language rust --engine clippy
 codeforge refactor .
-codeforge optimize .
 codeforge verify .
-codeforge benchmark . --samples 5
-codeforge doctor
 codeforge baseline show --file .codeforge/baseline.json
-codeforge ci --changed --baseline .codeforge/baseline.json --fail-on new
-codeforge beautify .
-codeforge ci --changed --sarif codeforge.sarif
+codeforge ci . --changed --baseline .codeforge/baseline.json --fail-on new
+```
+
+`refactor` shows proposals. `verify` runs trusted project commands, which may
+write build output or access the network. Review configuration before executing
+commands in an unfamiliar repository. See [Verification](docs/VERIFICATION.md)
+and [baseline setup](docs/baseline.md); a baseline must be reviewed, not generated
+merely to make CI green.
+
+Optional commands from the current source tree:
+
+```bash
+codeforge context . --query verification --limit 10 --max-bytes 32768
+codeforge impact . --depth 4 --graph
+codeforge import-sarif report.sarif --root . --language rust
 codeforge fleet audit --config fleet.toml
 codeforge fleet refactor --config fleet.toml --risk low --dry-run
 ```
 
-Common flags:
+Supply your own SARIF file or [Fleet configuration](docs/FLEET.md). Context and
+impact read source without applying changes; suggested tests never replace the
+full verification policy. [SARIF](docs/SARIF.md) covers external evidence limits.
 
-```text
---json
---sarif
---changed
---language <name>
---engine <id-or-name>
---external
-```
+## Security model
 
-## Development
+No account, telemetry, hosted service or model is required. Local tool discovery
+may execute version probes. External commands inherit host permissions and
+environment; timeout/output bounds are not an OS sandbox. Reports can contain
+paths, source and tool output, so review them before sharing. GitHub publication
+is explicit through Fleet PR mode. See [Security](docs/SECURITY.md) and
+[vulnerability reporting](SECURITY.md).
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --lib --bins --tests
-cargo build --release -p codeforge-cli
+## Engine extensions and development
 
-cd apps/desktop
-pnpm install
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm tauri build --no-bundle
-```
+Reuse native parsers and the existing protocol, process runner and transaction
+boundaries. [Plugins](docs/PLUGINS.md) distinguishes manifest validation from
+actual process isolation; arbitrary manifest installation is not a complete SDK.
+[Development](docs/DEVELOPMENT.md) lists CI checks, and
+[Roadmap](docs/ROADMAP.md) separates release gates from future work.
 
-Local optional tools do not need to be installed to run the built-in fixture suite.
+[Benchmark methodology and observations](docs/benchmarking.md) include resource
+variation and do not claim a default scan speedup.
 
-## Configuration
-
-Create `.codeforge.toml` in the workspace when a project needs explicit commands:
-
-```toml
-[commands.test]
-program = "cargo"
-args = ["test", "--all-targets"]
-cwd = "."
-timeout_secs = 300
-
-[commands.benchmark]
-program = "cargo"
-args = ["bench", "--quiet"]
-cwd = "."
-timeout_secs = 600
-```
-
-Supported command keys are `format`, `lint`, `syntax`, `typecheck`, `build`, `test`, `fuzz`, `differential`, `equivalence`, and `benchmark`. `format` and `lint` take precedence over auto-detected syntax/typecheck commands.
-
-For fleet selection and policy, create `fleet.toml` and see [fleet-mode.md](docs/fleet-mode.md). Repository execution remains in `.codeforge.toml`.
-
-## Plugin development
-
-Plugins are declarative first. A manifest declares identity, languages, capabilities, executable, dependencies, timeout, and permissions:
-
-```toml
-id = "example-engine"
-name = "Example Engine"
-version = "0.2.1"
-kind = "local_executable"
-languages = ["python"]
-capabilities = ["lint", "fix"]
-executable = "example-tool"
-timeout_ms = 30000
-permissions = ["read_workspace", "execute_process"]
-```
-
-Arbitrary third-party plugins do not receive unrestricted shell or filesystem access by default. See [plugin-system.md](docs/plugin-system.md).
-
-## Roadmap
-
-- Current: fleet orchestration, safe transformation classes, verification evidence bundles, and PR mode.
-- Next: incremental Tree-sitter caching, hunk-level review, and more language-native transforms.
-- Future: worker SDK, differential verification, and formal verification.
-
-## Benchmarking
-
-The repository includes a Criterion suite for startup, repository indexing, single-file analysis, incremental review, AST search, and diagnostic aggregation. Run:
-
-```bash
-cargo bench -p codeforge-core --bench runtime
-cargo bench -p codeforge-fleet --bench fleet
-```
-
-Do not publish claims such as “10x faster” without measured data in [benchmarks/results](benchmarks/results).
-
-## AI boundary
-
-AI is disabled by default. If an optional AI provider is added later, it may
-only propose transformations. It cannot bypass the parser, diff, verification,
-transaction, or policy boundaries. AI is optional proposal generation, not the
-trust boundary.
-
-See [rule-ids.md](docs/rule-ids.md) for the stable rule namespace.
-
-## License
-
-Apache-2.0. Third-party tools are locally discovered and are not relicensed or redistributed by this project. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+CodeForge is independently usable with no LCE runtime or crate dependency.
+Licensed under [Apache-2.0](LICENSE); optional tools retain their
+[own licenses](THIRD_PARTY_LICENSES.md).
