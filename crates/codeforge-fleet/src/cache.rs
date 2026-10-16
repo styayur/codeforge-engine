@@ -35,7 +35,10 @@ impl CacheKey {
 
     pub fn stable_id(&self) -> String {
         let serialized = serde_json::to_vec(self).unwrap_or_default();
-        format!("{:x}", sha2::Sha256::digest(serialized))
+        sha2::Sha256::digest(serialized)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 }
 

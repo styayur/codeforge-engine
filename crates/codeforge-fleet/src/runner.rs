@@ -157,10 +157,11 @@ impl FleetRunner {
         let semaphore = Arc::new(Semaphore::new(concurrency));
         let cache_root = report_dir.parent().unwrap_or(&report_dir).to_path_buf();
         let cache = Arc::new(Mutex::new(FleetCache::load(&cache_root)?));
-        let config_hash = format!(
-            "{:x}",
+        let config_hash =
             sha2::Sha256::digest(toml::to_string(&self.config).unwrap_or_default().as_bytes())
-        );
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
         let started_at = Utc::now();
         let mut tasks = tokio::task::JoinSet::new();
         let mut task_ids = std::collections::BTreeMap::new();

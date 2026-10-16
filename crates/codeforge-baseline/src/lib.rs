@@ -679,7 +679,10 @@ fn hash_parts(parts: &[&str]) -> String {
 }
 
 fn hash_text(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn legacy_fingerprint(rule_id: &str, path: &str) -> String {
