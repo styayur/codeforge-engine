@@ -357,7 +357,7 @@ fn apply_edits(path: &Path, source: &str, edits: &[TextEdit]) -> Result<String, 
 
 fn hash_text(source: &str) -> String {
     let digest = Sha256::digest(source.as_bytes());
-    format!("{digest:x}")
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
