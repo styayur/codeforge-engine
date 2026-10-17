@@ -266,7 +266,7 @@ impl WorkspaceManager {
 
 pub fn hash_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    format!("{digest:x}")
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 pub fn hash_file(path: impl AsRef<Path>) -> std::io::Result<String> {
@@ -351,6 +351,10 @@ mod tests {
 
     #[test]
     fn hash_is_stable() {
+        assert_eq!(
+            hash_bytes(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
         assert_eq!(hash_bytes(b"forge"), hash_bytes(b"forge"));
         assert_ne!(hash_bytes(b"forge"), hash_bytes(b"forge2"));
     }

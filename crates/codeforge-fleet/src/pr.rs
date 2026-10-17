@@ -42,7 +42,10 @@ impl PrManager {
 
     /// Hash structured inputs, not concatenated strings or wall-clock time.
     pub fn task_id(inputs: &serde_json::Value) -> String {
-        format!("{:x}", sha2::Sha256::digest(inputs.to_string().as_bytes()))
+        sha2::Sha256::digest(inputs.to_string().as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 
     pub async fn create_branch(
