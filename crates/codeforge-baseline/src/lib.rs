@@ -27,6 +27,8 @@ pub enum BaselineError {
     },
     #[error("invalid baseline: {0}")]
     Invalid(String),
+    #[error("baseline pruning blocked by {0} ambiguous structural/context match(es)")]
+    AmbiguousPrune(usize),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -81,6 +83,27 @@ pub struct MigrationReport {
     pub skipped_tool_gaps: usize,
     pub skipped_unknown: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PruneCandidate {
+    pub fingerprint: String,
+    pub rule_id: String,
+    pub path: PathBuf,
+    pub disposition: FindingDisposition,
+    pub lifecycle: FindingLifecycle,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PruneReport {
+    pub applied: bool,
+    pub inspected: usize,
+    pub removable: usize,
+    pub removed: usize,
+    pub retained: usize,
+    pub ambiguous: usize,
+    pub blocked_by_ambiguity: bool,
+    pub entries: Vec<PruneCandidate>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -154,6 +177,57 @@ impl BaselineStore {
             self.file.entries.push(entry);
         }
         Ok(())
+    }
+
+    pub fn prune_against(
+        &mut self,
+        diagnostics: &[Diagnostic],
+        repository_root: impl AsRef<Path>,
+        apply: bool,
+    ) -> Result<PruneReport, BaselineError> {
+        let comparison = self.compare(diagnostics, repository_root);
+        if apply && !comparison.ambiguous.is_empty() {
+            return Err(BaselineError::AmbiguousPrune(comparison.ambiguous.len()));
+        }
+        let mut candidates = comparison
+            .resolved
+            .into_iter()
+            .chain(comparison.stale)
+            .map(|entry| PruneCandidate {
+                fingerprint: entry.fingerprint,
+                rule_id: entry.rule_id,
+                path: entry.path,
+                disposition: entry.disposition,
+                lifecycle: entry.lifecycle,
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.fingerprint.cmp(&right.fingerprint));
+        let inspected = self.file.entries.len();
+        let removable = candidates.len();
+        let removed = if apply {
+            let fingerprints = candidates
+                .iter()
+                .map(|entry| entry.fingerprint.as_str())
+                .collect::<BTreeSet<_>>();
+            let before = self.file.entries.len();
+            self.file
+                .entries
+                .retain(|entry| !fingerprints.contains(entry.fingerprint.as_str()));
+            before - self.file.entries.len()
+        } else {
+            0
+        };
+        let ambiguous = comparison.ambiguous.len();
+        Ok(PruneReport {
+            applied: apply,
+            inspected,
+            removable,
+            removed,
+            retained: self.file.entries.len(),
+            ambiguous,
+            blocked_by_ambiguity: ambiguous > 0,
+            entries: candidates,
+        })
     }
 
     pub fn prune(&mut self) -> usize {
@@ -879,6 +953,78 @@ mod tests {
             comparison.known_accepted[0].match_kind,
             BaselineMatchKind::Structural
         );
+    }
+
+    #[test]
+    fn prune_is_dry_run_by_default_and_applies_explicitly() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("src/lib.rs");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("src");
+        std::fs::write(&path, "fn value() { let value = 1; }\n").expect("source");
+        let known = diagnostic(&path, 1, "known issue");
+        let mut store = BaselineStore::new();
+        store
+            .review(
+                &known,
+                temp.path(),
+                FindingDisposition::Accepted,
+                Some("reviewed debt".to_owned()),
+            )
+            .expect("accept");
+
+        let report = store
+            .prune_against(&[], temp.path(), false)
+            .expect("dry run");
+        assert!(!report.applied);
+        assert_eq!(report.inspected, 1);
+        assert_eq!(report.removable, 1);
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.retained, 1);
+        assert!(!report.blocked_by_ambiguity);
+        assert_eq!(store.entries().len(), 1);
+
+        let report = store.prune_against(&[], temp.path(), true).expect("apply");
+        assert!(report.applied);
+        assert_eq!(report.removed, 1);
+        assert_eq!(report.retained, 0);
+        assert!(store.entries().is_empty());
+    }
+
+    #[test]
+    fn prune_apply_refuses_ambiguous_matches() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("src/lib.rs");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("src");
+        std::fs::write(&path, "fn value() { let value = 1; }\n").expect("source");
+        let diagnosis = diagnostic(&path, 1, "ambiguous");
+        let fingerprint = fingerprint_diagnostic(&diagnosis, temp.path());
+        let entry = |suffix: &str| BaselineEntry {
+            fingerprint: format!("other-{suffix}"),
+            structural_fingerprint: Some(fingerprint.structural.clone()),
+            context_fingerprint: None,
+            rule_id: diagnosis.rule_id.clone(),
+            path: PathBuf::from("src/lib.rs"),
+            symbol: fingerprint.symbol.clone(),
+            context_hash: None,
+            source_context: SourceContext::Production,
+            disposition: FindingDisposition::Accepted,
+            reason: Some("reviewed".to_owned()),
+            first_seen: Utc::now(),
+            last_reviewed: Some(Utc::now()),
+            rule_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            lifecycle: FindingLifecycle::Active,
+        };
+        let mut store = BaselineStore::from_file(BaselineFile {
+            schema_version: 1,
+            codeforge_version: env!("CARGO_PKG_VERSION").to_owned(),
+            entries: vec![entry("a"), entry("b")],
+        })
+        .expect("store");
+        let error = store
+            .prune_against(&[diagnosis], temp.path(), true)
+            .expect_err("ambiguous prune must fail");
+        assert!(matches!(error, BaselineError::AmbiguousPrune(1)));
+        assert_eq!(store.entries().len(), 2);
     }
 
     #[test]

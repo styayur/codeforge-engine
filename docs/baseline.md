@@ -63,9 +63,16 @@ codeforge baseline review --path ./repo --file .codeforge/baseline.json --includ
 codeforge baseline accept --path ./repo --file .codeforge/baseline.json --finding <fingerprint> --reason "..."
 codeforge baseline false-positive --path ./repo --file .codeforge/baseline.json --finding <fingerprint> --reason "..."
 codeforge baseline unreview --path ./repo --file .codeforge/baseline.json --finding <fingerprint>
-codeforge baseline prune --file .codeforge/baseline.json
+codeforge baseline prune --path ./repo --file .codeforge/baseline.json
+codeforge baseline prune --path ./repo --file .codeforge/baseline.json --apply
 codeforge baseline migrate --from legacy.json --to .codeforge/baseline.json
 ```
 
 Baseline writes are explicit. Audit, review, and CI are read-only with respect
 to the baseline.
+
+`prune` re-evaluates current diagnostics and is a dry run unless `--apply` is
+provided. It removes only entries classified as resolved or stale. If any
+structural/context match is ambiguous, `--apply` refuses the entire write and
+leaves the baseline unchanged. Use `--include-fixtures` when the reviewed
+baseline intentionally contains fixture findings.

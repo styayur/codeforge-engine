@@ -266,7 +266,7 @@ enum BaselineCommand {
     Accept(BaselineActionArgs),
     FalsePositive(BaselineActionArgs),
     Unreview(BaselineActionArgs),
-    Prune(BaselineShowArgs),
+    Prune(BaselinePruneArgs),
     Migrate(BaselineMigrateArgs),
 }
 
@@ -292,6 +292,21 @@ struct BaselineActionArgs {
     finding: String,
     #[arg(long)]
     reason: String,
+}
+
+#[derive(Debug, Args)]
+struct BaselinePruneArgs {
+    #[arg(long, default_value = ".codeforge/baseline.json")]
+    file: PathBuf,
+    #[arg(long, default_value = ".")]
+    path: PathBuf,
+    #[arg(long)]
+    json: bool,
+    #[arg(long)]
+    include_fixtures: bool,
+    /// Remove resolved or stale entries. Without this flag pruning is a dry run.
+    #[arg(long)]
+    apply: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1014,13 +1029,50 @@ async fn baseline(args: BaselineArgs) -> Result<()> {
             .await?;
         }
         BaselineCommand::Prune(args) => {
-            let mut store = BaselineStore::load(&args.file)?;
-            let removed = store.prune();
-            store.save(&args.file)?;
-            if args.json {
-                print_json(&serde_json::json!({ "removed": removed }))?;
+            let engine = open(&args.path)?;
+            let options = ReviewOptions {
+                languages: Vec::new(),
+                changed_only: false,
+                include_external: true,
+            };
+            let report = if args.include_fixtures {
+                engine.review_including_non_production(options).await?
             } else {
-                println!("Removed {removed} resolved/stale baseline entries.");
+                engine.review(options).await?
+            };
+            let mut store = BaselineStore::load(&args.file)?;
+            let report = store.prune_against(&report.diagnostics, engine.root(), args.apply)?;
+            if args.apply {
+                store.save(&args.file)?;
+            }
+            if args.json {
+                print_json(&report)?;
+            } else {
+                if report.blocked_by_ambiguity {
+                    eprintln!(
+                        "warning: {} ambiguous match(es) block --apply; resolve them first",
+                        report.ambiguous
+                    );
+                }
+                println!(
+                    "{} {} resolved/stale entries; {} retained.",
+                    if report.applied {
+                        "Removed"
+                    } else {
+                        "Would remove"
+                    },
+                    report.removable,
+                    report.retained
+                );
+                for entry in &report.entries {
+                    println!(
+                        "  [{}] {} {} ({:?})",
+                        entry.rule_id,
+                        entry.path.display(),
+                        entry.fingerprint,
+                        entry.lifecycle
+                    );
+                }
             }
         }
         BaselineCommand::Migrate(args) => {

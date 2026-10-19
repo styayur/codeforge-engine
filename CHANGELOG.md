@@ -7,6 +7,10 @@
 - Review responses include additive coverage metadata: selected scope and languages, indexed versus selected files, relevant engine availability, external-analysis intent, and explicit coverage limitations.
 - The desktop review view shows the coverage strip before diagnostics so a small finding count is not mistaken for repository-wide assurance.
 
+### Fixed
+
+- `baseline prune` now evaluates the current workspace, defaults to a dry run, requires `--apply` to write, reports removable entries, and refuses the entire write on ambiguous structural/context matches.
+
 ### Compatibility
 
 - Old review reports without coverage deserialize with an explicit default; existing CLI and desktop consumers keep their previous fields.
