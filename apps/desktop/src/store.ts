@@ -7,6 +7,7 @@ import type {
   FleetRunSummary,
   FixPreviewResponse,
   OptimizationReport,
+  ReviewCoverage,
   TransactionRecord,
   VerificationResult,
   Theme,
@@ -20,6 +21,7 @@ interface AppStore {
   workspace?: WorkspaceSummary;
   engines: EngineStatus[];
   diagnostics: Diagnostic[];
+  coverage?: ReviewCoverage;
   selectedDiagnosticId?: string;
   preview?: FixPreviewResponse;
   verification?: VerificationResult;
@@ -94,6 +96,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const report = await api.runReview(changedOnly, includeExternal);
       set({
         diagnostics: report.diagnostics,
+        coverage: report.coverage,
         selectedDiagnosticId: report.diagnostics[0]?.id,
         preview: undefined,
         view: "review"

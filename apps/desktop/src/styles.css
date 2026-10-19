@@ -111,7 +111,7 @@ body { background: var(--bg); }
 .severity-hint { color: #a8b4c5; background: rgba(155,168,186,.11); }
 .rule-id { color: #82a9c8; font-family: "Cascadia Code", monospace; font-size: 10px; }
 .fixable { color: var(--accent); font-size: 9px; margin-left: auto; text-transform: uppercase; letter-spacing: .08em; }
-.review-main { min-width: 0; min-height: 0; display: grid; grid-template-rows: 52px minmax(0, 1fr) auto; }
+.review-main { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .review-toolbar { padding: 9px 14px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--panel); }
 .review-toolbar > div:first-child { display: flex; flex-direction: column; gap: 2px; }
 .diff-panel { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; background: #0b1119; }
@@ -129,6 +129,8 @@ body { background: var(--bg); }
 .explanation svg { color: var(--accent); flex: none; }
 .explanation p { margin: 0; font-size: 12px; line-height: 1.6; }
 .finding-context { margin: 18px; color: var(--muted); font-family: "Cascadia Code", monospace; font-size: 11px; }
+.coverage-strip { min-height: 34px; display: flex; align-items: center; gap: 12px; padding: 6px 14px; border-bottom: 1px solid var(--line-soft); background: #07111b; overflow-x: auto; font-size: 10px; white-space: nowrap; }
+.coverage-gap { color: var(--warning, #e0a34d); }
 .verification-strip { min-height: 46px; display: flex; align-items: center; gap: 14px; padding: 9px 14px; border-top: 1px solid var(--line-soft); background: #0a111a; overflow-x: auto; font-size: 10px; }
 .verification-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-transform: capitalize; }
 .verify-passed { color: #76e4cb; background: rgba(54,224,194,.12); }
@@ -214,6 +216,7 @@ html[data-theme="light"] .topbar { background: rgba(255,255,255,.95); }
 html[data-theme="light"] .problem-panel,
 html[data-theme="light"] .diff-panel,
 html[data-theme="light"] .review-toolbar,
+html[data-theme="light"] .coverage-strip,
 html[data-theme="light"] .verification-strip { background: #ffffff; }
 html[data-theme="light"] .welcome { background: radial-gradient(circle at 50% 35%, rgba(8,127,112,.08), transparent 34%), #f8fafb; }
 html[data-theme="light"] .button.primary { color: #ffffff; background: linear-gradient(180deg, #0b9584, #087568); border-color: #087568; }

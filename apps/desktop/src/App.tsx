@@ -30,6 +30,7 @@ import type {
   RepoRunSummary,
   Theme,
   OptimizationReport,
+  ReviewCoverage,
   VerificationResult,
   View,
   WorkspaceSummary
@@ -118,6 +119,7 @@ export default function App() {
               selectedId={store.selectedDiagnosticId}
               preview={store.preview}
               verification={store.verification}
+              coverage={store.coverage}
               loading={store.loading}
             />
           )}
@@ -349,6 +351,7 @@ function ReviewView({
   selectedId,
   preview,
   verification,
+  coverage,
   loading
 }: {
   diagnostics: Diagnostic[];
@@ -356,6 +359,7 @@ function ReviewView({
   selectedId?: string;
   preview: ReturnType<typeof useAppStore.getState>["preview"];
   verification?: VerificationResult;
+  coverage?: ReviewCoverage;
   loading: boolean;
 }) {
   const { selectDiagnostic, previewFix, applyPreview, runVerification, undoTransaction, history, saveDisposition } = useAppStore();
@@ -407,10 +411,27 @@ function ReviewView({
             )}
           </div>
         </div>
+        <CoverageStrip coverage={coverage} />
         <DiffPreview diagnostic={selected} preview={preview} />
         <VerificationStrip result={verification} />
       </div>
     </section>
+  );
+}
+
+function CoverageStrip({ coverage }: { coverage?: ReviewCoverage }) {
+  if (!coverage) return null;
+  const available = coverage.engines.filter((engine) => engine.available).length;
+  const missing = coverage.engines.filter((engine) => !engine.available);
+  return (
+    <div className="coverage-strip">
+      <strong>Coverage</strong>
+      <span>{coverage.selected_files}/{coverage.discovered_files} indexed files</span>
+      <span>{coverage.languages.length} languages</span>
+      <span>{available}/{coverage.engines.length} relevant engines available</span>
+      <span>{coverage.external_analysis_requested ? "external requested" : "external not requested"}</span>
+      {missing.length > 0 && <span className="coverage-gap">{missing.map((engine) => engine.metadata.id).join(", ")} missing</span>}
+    </div>
   );
 }
 

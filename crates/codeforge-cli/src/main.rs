@@ -554,6 +554,7 @@ async fn review(args: CommonArgs) -> Result<()> {
             "languages": report.languages,
             "engines_used": report.engines_used,
             "duration_ms": report.duration_ms,
+            "coverage": report.coverage,
             "diagnostics": diagnostics,
         }))?;
     } else {
@@ -562,6 +563,28 @@ async fn review(args: CommonArgs) -> Result<()> {
             report.files_analyzed,
             report.duration_ms,
             diagnostics.len()
+        );
+        let missing_engines = report
+            .coverage
+            .engines
+            .iter()
+            .filter(|engine| !engine.available)
+            .map(|engine| engine.metadata.id.as_str())
+            .collect::<Vec<_>>();
+        println!(
+            "Coverage: {}/{} indexed files selected; external analysis {}; missing engines: {}",
+            report.coverage.selected_files,
+            report.coverage.discovered_files,
+            if report.coverage.external_analysis_requested {
+                "requested"
+            } else {
+                "not requested"
+            },
+            if missing_engines.is_empty() {
+                "none among relevant adapters".to_owned()
+            } else {
+                missing_engines.join(", ")
+            }
         );
         for diagnostic in diagnostics {
             println!(

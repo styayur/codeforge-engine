@@ -73,6 +73,38 @@ pub struct ReviewReport {
     pub languages: Vec<Language>,
     pub engines_used: Vec<String>,
     pub duration_ms: u128,
+    #[serde(default)]
+    pub coverage: ReviewCoverage,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewSelection {
+    #[default]
+    AllIndexedFiles,
+    ChangedFiles,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReviewCoverage {
+    pub selection: ReviewSelection,
+    pub requested_languages: Vec<Language>,
+    pub discovered_files: usize,
+    pub selected_files: usize,
+    pub submitted_files: usize,
+    pub languages: Vec<LanguageCoverage>,
+    pub engines: Vec<EngineStatus>,
+    pub external_analysis_requested: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanguageCoverage {
+    pub language: Language,
+    pub discovered_files: usize,
+    pub discovered_bytes: u64,
+    pub selected_files: usize,
+    pub submitted_files: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -224,12 +256,78 @@ impl CodeForgeEngine {
         if let Ok(mut cache) = self.diagnostics.write() {
             *cache = diagnostics.clone();
         }
+        let language_stats = self.workspace.language_stats();
+        let language_coverage = selected_languages
+            .iter()
+            .map(|language| {
+                let stats = language_stats.get(language).cloned().unwrap_or_default();
+                let selected = files
+                    .iter()
+                    .filter(|file| {
+                        file.extension()
+                            .and_then(|extension| extension.to_str())
+                            .and_then(Language::from_extension)
+                            == Some(*language)
+                    })
+                    .count();
+                LanguageCoverage {
+                    language: *language,
+                    discovered_files: stats.files,
+                    discovered_bytes: stats.bytes,
+                    selected_files: selected,
+                    submitted_files: selected,
+                }
+            })
+            .collect::<Vec<_>>();
+        let discovered_files = language_stats.values().map(|stats| stats.files).sum();
+        let engines = self
+            .registry
+            .statuses()
+            .into_iter()
+            .filter(|status| {
+                status
+                    .metadata
+                    .languages
+                    .iter()
+                    .any(|language| selected_languages.contains(language))
+            })
+            .collect();
+        let mut notes = vec![
+            "Only indexed supported source, config and document types are counted; unsupported files and ignore-rule exclusions are not analyzed.".to_owned(),
+            "Submitted-file counts are not line or branch coverage.".to_owned(),
+            "Engine status describes availability; each diagnostic producer identifies the tool or heuristic that reported a finding.".to_owned(),
+            "Absence of a diagnostic is not evidence that the repository has no defects.".to_owned(),
+        ];
+        if options.changed_only {
+            notes.push("Changed-file mode limits selection to files reported by Git.".to_owned());
+        }
+        if options.include_external {
+            notes.push("External analyzers were requested when available; inspect engine status and diagnostic producers for actual execution.".to_owned());
+        } else {
+            notes.push("External analyzers were not requested for this review.".to_owned());
+        }
+        let coverage = ReviewCoverage {
+            selection: if options.changed_only {
+                ReviewSelection::ChangedFiles
+            } else {
+                ReviewSelection::AllIndexedFiles
+            },
+            requested_languages: options.languages.clone(),
+            discovered_files,
+            selected_files: files.len(),
+            submitted_files: files.len(),
+            languages: language_coverage,
+            engines,
+            external_analysis_requested: options.include_external,
+            notes,
+        };
         Ok(ReviewReport {
             diagnostics,
             files_analyzed: files.len(),
             languages: selected_languages,
             engines_used,
             duration_ms: started.elapsed().as_millis(),
+            coverage,
         })
     }
 
@@ -1234,6 +1332,33 @@ mod tests {
             first.diagnostics.first().map(|item| item.id.as_str()),
             second.diagnostics.first().map(|item| item.id.as_str())
         );
+        assert_eq!(first.coverage.selection, ReviewSelection::AllIndexedFiles);
+        assert_eq!(first.coverage.discovered_files, 1);
+        assert_eq!(first.coverage.selected_files, 1);
+        assert_eq!(first.coverage.submitted_files, 1);
+        assert_eq!(first.coverage.languages[0].language, Language::Python);
+        assert!(
+            first
+                .coverage
+                .engines
+                .iter()
+                .any(|engine| engine.metadata.id == "python-builtin")
+        );
+        assert!(!first.coverage.notes.is_empty());
+    }
+
+    #[test]
+    fn legacy_review_report_without_coverage_deserializes() {
+        let report: ReviewReport = serde_json::from_value(serde_json::json!({
+            "diagnostics": [],
+            "files_analyzed": 0,
+            "languages": [],
+            "engines_used": [],
+            "duration_ms": 0
+        }))
+        .expect("legacy report");
+        assert_eq!(report.coverage.selection, ReviewSelection::AllIndexedFiles);
+        assert_eq!(report.coverage.discovered_files, 0);
     }
 
     #[test]
