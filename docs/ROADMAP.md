@@ -1,26 +1,26 @@
 # Roadmap and maturity
 
-## Stable workflows in the current source
+## Stable workflows in v1.0.0
 
-Native parsing/review, reviewed baselines, transformation previews, transaction
-history, configurable verification, SARIF export and independent Fleet tasks
-have regression coverage. A stable workflow can carry heuristic findings; its
+Native parsing/review, reviewed baselines, CLI and desktop preview/apply/undo,
+transaction history, configurable verification, SARIF export and independent
+Fleet tasks have regression coverage. A stable workflow can carry heuristic findings; its
 existence does not make every proposed fix safe.
 
 ## Experimental capabilities
 
-On-demand context/impact and external SARIF path/CodeQL commands are available
-from source, absent from the v0.2.2 package. Impact resolution is name-based and
-bounded; test suggestions cannot replace a full test gate. Real CodeQL execution
-has not been validated. Desktop package build success alone does not establish
-end-to-end acceptance on every supported platform.
+On-demand context/impact and external SARIF path/CodeQL commands are included in
+v1.0.0 as Experimental, opt-in paths. Impact resolution is name-based and bounded;
+test suggestions cannot replace a full test gate. Real CodeQL execution has not
+been certified. Desktop package build success alone does not establish end-to-end
+acceptance on every platform.
 
-## Before v1.0.0
+## Next release candidates
 
-Resolve the [release checklist](RELEASE_PREPARATION.md): consistent version
-metadata, minimum-toolchain validation, green CI, platform installation/desktop
-smokes, artifact checksums and a reviewed compatibility/support statement.
-Keep experimental features labeled in the release rather than expanding scope.
+Evidence coverage metadata, baseline lifecycle improvements, local symbol/scope
+analysis, project verification orchestration, reproducible before/after benchmark
+comparison and executable architecture constraints require separate design and
+test evidence. They are not silently promoted by the v1.0.0 release.
 
 ## Future, not committed release scope
 

@@ -1,6 +1,6 @@
 # Optional external analysis
 
-Experimental, available in current source; not included in the v0.2.2 package.
+Experimental and included in the v1.0.0 package; never part of the default scan path.
 
 `codeforge import-sarif report.sarif --root . --language rust` imports local
 SARIF 2.1.0 findings and code-flow paths as JSON. `diagnostic_index` associates

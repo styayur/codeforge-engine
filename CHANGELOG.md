@@ -1,34 +1,49 @@
 # Changelog
 
-## v1.0.0
+## v1.0.0 - 2026-10-19
 
-**Unreleased draft.** Package versions remain 0.2.2. Experimental commands below
-are implemented in the current source tree but absent from the v0.2.2 package.
+First stable release of the local, CLI-first analysis and change-verification
+workflow. The release keeps optional context, impact and external-analysis paths
+Experimental; it does not claim complete semantic resolution or CodeQL integration
+certification.
 
 ### Added
 
+- CLI `apply` with preview-first, uniquely matched fix selection, explicit approval for review-required fixes, syntax verification and persisted transactions.
+- CLI `history` and `undo`, with hash checks that refuse recovery after later workspace edits.
+- Standalone CLI archives for Windows x64 and Linux x64, with normalized asset names and SHA-256 checksums.
+- Release preflight that verifies tag/version consistency, runs Rust format, Clippy and tests, and validates published asset names and bytes after upload.
+- Declared Rust 1.90 MSRV check in CI, reflecting the locked Tree-sitter and Tauri dependency requirements.
 - On-demand source context with exact positions, hashes and bounded output (Experimental).
 - Heuristic code relations, change impact and related-test suggestions (Experimental).
 - Bounded local SARIF finding/path import and optional user-supplied CodeQL CLI execution (Experimental).
-- User guides distinguishing analysis provenance, verification results and application authority.
 
 ### Changed
 
+- Cargo workspace, desktop package, Tauri bundle and lockfile versions now identify the release as 1.0.0.
+- Release publication uses the curated release note, a stable/prerelease tag-derived flag and exact normalized filenames.
+- CLI transformation entry points share the core preview, verification, transaction and rollback semantics used by the desktop app.
 - Current SARIF exports use standard camelCase fields while imports accept legacy CodeForge field names.
 - Project documentation centers on analysis, context, transformation, verification and evidence; development history is archived without discarding it.
-- Stable workflows, experimental integrations and future scope are documented separately.
+
+### Compatibility
+
+- Baseline schema version remains 1; existing exact, structural and context-relocated fingerprints remain supported.
+- Existing protocol JSON fields remain readable; new release behavior is additive at the CLI surface.
+- SARIF 2.1.0 output remains the compatibility target; imported external evidence cannot authorize fixes.
+- Experimental behavior and external-tool requirements remain opt-in.
 
 ### Performance
 
 - Context and external analysis remain opt-in and outside default scan/review/Fleet execution.
 - Recorded startup measurements show substantial environment variation; no default scan speedup is claimed.
-- The merged CLI is approximately 2.81% larger than the measured original, with no added Rust dependencies. See the benchmark report for scope and raw samples.
+- The earlier measured CLI size increase remains approximately 2.81%; no broader performance claim is made without comparable release measurements.
 
 ### Security
 
 - Imported findings/path evidence cannot authorize fixes or replace build/test gates.
+- CLI recovery refuses to overwrite files changed after application.
 - External process timeout/output limits and SARIF input bounds are explicit; neither is described as an OS sandbox.
-- Corrected claims about universal report redaction and the meaning of successful equivalence commands.
 
 ## v0.2.2 — 2026-10-13
 

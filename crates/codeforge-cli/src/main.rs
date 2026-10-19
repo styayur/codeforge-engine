@@ -34,6 +34,12 @@ enum Command {
     Beautify(CommonArgs),
     /// Show safe and unsafe transformations proposed by built-in adapters.
     Refactor(CommonArgs),
+    /// Preview or apply one uniquely matched fix, then record a reversible transaction.
+    Apply(ApplyArgs),
+    /// Undo a recorded transaction when the workspace still matches its after-state.
+    Undo(UndoArgs),
+    /// List persisted transactions that can be reviewed or undone.
+    History(HistoryArgs),
     /// Generate a performance candidate, verify it in a sandbox, and benchmark it.
     Optimize(CommonArgs),
     /// Run syntax checks plus configured/local build and test verification.
@@ -143,6 +149,56 @@ struct CommonArgs {
     /// Optional reviewed baseline for queue and classification output.
     #[arg(long, default_value = ".codeforge/baseline.json")]
     baseline: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct ApplyArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    /// Exact rule id to apply.
+    #[arg(long)]
+    rule: String,
+    /// Repository-relative or absolute file path used to disambiguate matches.
+    #[arg(long)]
+    file: Option<PathBuf>,
+    /// 1-based start line used to disambiguate matches.
+    #[arg(long)]
+    line: Option<usize>,
+    /// Zero-based fix index within the matched diagnostic.
+    #[arg(long, default_value_t = 0)]
+    fix_index: usize,
+    /// Actually apply the reviewed fix. Without this flag the command is preview-only.
+    #[arg(long)]
+    apply: bool,
+    /// Permit a fix marked review-required after inspecting the preview.
+    #[arg(long)]
+    allow_unsafe: bool,
+    /// Apply even when the syntax verification rejects the preview.
+    #[arg(long)]
+    force: bool,
+    /// Include available external lint engines while matching the rule.
+    #[arg(long)]
+    external: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct UndoArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long)]
+    transaction: String,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct HistoryArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -340,6 +396,9 @@ async fn main() -> ExitCode {
         Command::Lint(args) | Command::Review(args) => review(args).await,
         Command::Beautify(args) => beautify(args).await,
         Command::Refactor(args) => refactor(args).await,
+        Command::Apply(args) => apply(args).await,
+        Command::Undo(args) => undo(args).await,
+        Command::History(args) => history(args).await,
         Command::Optimize(args) => optimize(args).await,
         Command::Verify(args) => verify(args).await,
         Command::Benchmark(args) => benchmark(args).await,
@@ -623,6 +682,179 @@ async fn refactor(args: CommonArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+async fn apply(args: ApplyArgs) -> Result<()> {
+    if args.force && !args.apply {
+        anyhow::bail!("--force requires --apply");
+    }
+    let engine = open(&args.path)?;
+    let report = engine
+        .review(ReviewOptions {
+            languages: Vec::new(),
+            changed_only: false,
+            include_external: args.external,
+        })
+        .await?;
+    let matches = report
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.rule_id == args.rule)
+        .filter(|diagnostic| {
+            args.file
+                .as_deref()
+                .is_none_or(|file| diagnostic_path_matches(&diagnostic.file, engine.root(), file))
+        })
+        .filter(|diagnostic| {
+            args.line
+                .is_none_or(|line| diagnostic.range.start_line == line)
+        })
+        .collect::<Vec<_>>();
+    if matches.is_empty() {
+        anyhow::bail!(
+            "no matching diagnostic found for rule {} with the supplied selector",
+            args.rule
+        );
+    }
+    if matches.len() > 1 {
+        let locations = matches
+            .iter()
+            .map(|diagnostic| {
+                format!(
+                    "{}:{}",
+                    diagnostic.file.display(),
+                    diagnostic.range.start_line
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "ambiguous fix selector: {} diagnostics match; add --file or --line ({locations})",
+            matches.len()
+        );
+    }
+    let diagnostic_id = matches[0].id.clone();
+    let fix = matches[0]
+        .fixes
+        .get(args.fix_index)
+        .ok_or_else(|| anyhow::anyhow!("fix index {} not found", args.fix_index))?;
+    if args.apply && !fix.safe && !args.allow_unsafe {
+        anyhow::bail!(
+            "fix is marked review-required; inspect the preview, then pass --allow-unsafe with --apply"
+        );
+    }
+
+    let preview = engine.preview_fix(&diagnostic_id, args.fix_index)?;
+    let diagnostic = preview.diagnostic.clone();
+    let patch = preview.preview.patch.clone();
+    if !args.apply {
+        if args.json {
+            print_json(&serde_json::json!({
+                "diagnostic": diagnostic,
+                "patch": patch,
+                "applied": false,
+            }))?;
+        } else {
+            println!(
+                "Preview {}:{} [{}] {}",
+                diagnostic.file.display(),
+                diagnostic.range.start_line,
+                diagnostic.rule_id,
+                diagnostic.message
+            );
+            print_patch(&patch);
+            println!("No files changed. Re-run with --apply after reviewing this patch.");
+        }
+        return Ok(());
+    }
+
+    let title = format!(
+        "Apply {} to {}",
+        diagnostic.rule_id,
+        diagnostic.file.display()
+    );
+    let transaction = engine.apply_preview(&preview.preview, title, args.force)?;
+    if args.json {
+        print_json(&serde_json::json!({
+            "diagnostic": diagnostic,
+            "patch": patch,
+            "transaction": transaction,
+            "applied": true,
+        }))?;
+    } else {
+        println!(
+            "Applied {}:{} [{}]",
+            diagnostic.file.display(),
+            diagnostic.range.start_line,
+            diagnostic.rule_id
+        );
+        print_patch(&patch);
+        println!(
+            "Transaction: {} (undo with: codeforge undo {} --transaction {})",
+            transaction.id,
+            engine.root().display(),
+            transaction.id
+        );
+    }
+    Ok(())
+}
+
+async fn undo(args: UndoArgs) -> Result<()> {
+    let engine = open(&args.path)?;
+    engine.undo(&args.transaction)?;
+    if args.json {
+        print_json(&serde_json::json!({
+            "transaction_id": args.transaction,
+            "undone": true,
+        }))?;
+    } else {
+        println!("Undid transaction {}.", args.transaction);
+    }
+    Ok(())
+}
+
+async fn history(args: HistoryArgs) -> Result<()> {
+    let engine = open(&args.path)?;
+    let records = engine.history()?;
+    if args.json {
+        print_json(&records)?;
+    } else if records.is_empty() {
+        println!("No transactions.");
+    } else {
+        for record in records {
+            println!(
+                "{}  {}  {}  +{} -{}  {} file(s)",
+                record.id,
+                record.created_at.to_rfc3339(),
+                record.title,
+                record.patch.additions,
+                record.patch.deletions,
+                record.files.len()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn diagnostic_path_matches(
+    diagnostic: &std::path::Path,
+    root: &std::path::Path,
+    filter: &std::path::Path,
+) -> bool {
+    if filter.is_absolute() {
+        diagnostic == filter
+    } else {
+        diagnostic == root.join(filter) || diagnostic.ends_with(filter)
+    }
+}
+
+fn print_patch(patch: &codeforge_protocol::Patch) {
+    for file in &patch.files {
+        print!("{}", file.unified_diff);
+        if !file.unified_diff.ends_with('\n') {
+            println!();
+        }
+    }
 }
 
 async fn optimize(args: CommonArgs) -> Result<()> {
