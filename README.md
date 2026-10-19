@@ -1,17 +1,15 @@
 # CodeForge Engine
 
-**Verified code analysis and transformation engine.** Inspect a repository,
-review proposed changes, run its verification commands, and keep the evidence
-that explains each decision.
+**Local, CLI-first code analysis and change verification.** CodeForge Engine
+finds review candidates, shows the source evidence behind them, previews changes,
+runs the checks a project declares, and records what actually happened. It is for
+developers who need a small offline engineering tool rather than an IDE or an
+autonomous coding agent.
 
 [![CI](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[Documentation](docs/README.md) · [Latest published prerelease: v0.2.2](https://github.com/styayur/codeforge-engine/releases/tag/v0.2.2) · [Changelog](CHANGELOG.md)
-
-**v1.0.0 is an unreleased candidate.** There is no published stable 1.0 binary.
-This README describes the current source tree. Context, impact and external
-SARIF/CodeQL commands are available from source and are absent from v0.2.2.
+[Documentation](docs/README.md) · [Latest stable release: v1.0.0](https://github.com/styayur/codeforge-engine/releases/tag/v1.0.0) · [Changelog](CHANGELOG.md)
 
 ## Why CodeForge
 
@@ -37,8 +35,8 @@ every language rule or suggested transformation is semantically proven.
 | Stable | Configurable verification pipeline | Records actual command results, including unavailable/skipped checks |
 | Stable | Baselines and Fleet automation | Independent repository transactions, deterministic task identity and guarded PR creation |
 | Stable | SARIF export and evidence bundles | Current source emits standard SARIF; findings do not authorize edits |
-| Experimental, source only | Context extraction and impact/test suggestions | Exact excerpts; heuristic graph relations, bounded coverage |
-| Experimental, source only | SARIF path import and optional CodeQL CLI adapter | Untrusted external evidence; real CodeQL integration has not been validated |
+| Experimental | Context extraction and impact/test suggestions | Exact excerpts; heuristic graph relations, bounded coverage |
+| Experimental | SARIF path import and optional CodeQL CLI adapter | Untrusted external evidence; real CodeQL integration has not been validated |
 | Future | Incremental parse caching, broader semantic resolution and verifier integrations | No installation or execution implied |
 
 See [Engines](docs/ENGINES.md) for language coverage and optional tool status.
@@ -76,24 +74,24 @@ missing required tools do not count as a pass.
 
 ## Installation
 
-Use the desktop packages and `checksums.txt` on the
-[v0.2.2 prerelease](https://github.com/styayur/codeforge-engine/releases/tag/v0.2.2)
-page for Windows/Linux. Windows requires WebView2; Linux desktop builds require
-WebKitGTK. A desktop package does not install optional language tools.
+Download the CLI archive for your platform from the
+[v1.0.0 release](https://github.com/styayur/codeforge-engine/releases/tag/v1.0.0),
+verify it against `checksums.txt`, and extract `codeforge` (`codeforge.exe` on
+Windows). Desktop packages are available on the same page. Windows requires
+WebView2; Linux desktop builds require WebKitGTK. Packages do not install optional
+language tools.
 
-For the current CLI, including the experimental source-only commands:
+To build the CLI from the tagged source instead:
 
 ```bash
-git clone https://github.com/styayur/codeforge-engine.git
+git clone --branch v1.0.0 --depth 1 https://github.com/styayur/codeforge-engine.git
 cd codeforge-engine
 cargo install --locked --path crates/codeforge-cli
-codeforge --help
+codeforge --version
 ```
 
-This builds the checked-out revision, whose package version is currently 0.2.2;
-it is not equivalent to checking out tag v0.2.2. For reproducibility, record
-`git rev-parse HEAD`. Use current stable Rust; see
-[Development](docs/DEVELOPMENT.md) for platform prerequisites.
+The workspace declares Rust 1.90 as its minimum supported version and CI checks
+that declared MSRV. See [Development](docs/DEVELOPMENT.md) for platform prerequisites.
 
 ## CLI examples
 
@@ -104,18 +102,26 @@ codeforge scan .
 codeforge review . --json
 codeforge review . --sarif > codeforge.sarif
 codeforge refactor .
+codeforge apply . --rule RS-PERFORMANCE-001 --file src/lib.rs
+codeforge apply . --rule RS-PERFORMANCE-001 --file src/lib.rs --apply --allow-unsafe
+codeforge history .
+codeforge undo . --transaction <transaction-id>
 codeforge verify .
 codeforge baseline show --file .codeforge/baseline.json
 codeforge ci . --changed --baseline .codeforge/baseline.json --fail-on new
 ```
 
-`refactor` shows proposals. `verify` runs trusted project commands, which may
-write build output or access the network. Review configuration before executing
-commands in an unfamiliar repository. See [Verification](docs/VERIFICATION.md)
-and [baseline setup](docs/baseline.md); a baseline must be reviewed, not generated
+`refactor` shows proposals. `apply` is preview-only by default and refuses an
+ambiguous selector; `--apply` records a reversible transaction after syntax
+verification. Review-required fixes need the explicit `--allow-unsafe` flag.
+`undo` refuses to overwrite a workspace whose files changed after application.
+`verify` runs trusted project commands, which may write build output or access the
+network. Review configuration before executing commands in an unfamiliar
+repository. See [Verification](docs/VERIFICATION.md) and
+[baseline setup](docs/baseline.md); a baseline must be reviewed, not generated
 merely to make CI green.
 
-Optional commands from the current source tree:
+Experimental commands included in the v1.0.0 package:
 
 ```bash
 codeforge context . --query verification --limit 10 --max-bytes 32768

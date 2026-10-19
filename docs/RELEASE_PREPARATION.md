@@ -1,33 +1,44 @@
 # v1.0.0 release preparation
 
-**Status: draft, not ready to tag solely on documentation approval.** Runtime,
-frontend and desktop package versions remain 0.2.2. This documentation change
-does not create a compatibility guarantee, tag or release binary.
+**Status: release candidate.** Cargo, desktop and Tauri metadata now identify
+1.0.0. Publication remains blocked until the reviewed PR, candidate builds and
+platform-acceptance evidence below are complete.
 
-## Prepared in this documentation stage
+## Completed in the release candidate
 
-- User-facing README, canonical guides and Stable/Experimental/Future labels.
-- Evidence-preserving history archive and honest performance methodology.
-- [Changelog](../CHANGELOG.md) and [user-facing release draft](releases/v1.0.0.md).
-- [Documentation verification procedure](DOCUMENTATION_CHECKS.md).
+- Aligned Cargo workspace, desktop package, Tauri bundle and lockfile versions.
+- Added a release metadata checker used by CI and release preflight.
+- Replaced the unsupported Rust 1.85 declaration with Rust 1.90, the highest
+  declared requirement in the locked dependency graph, and added an MSRV job.
+- Added CLI `apply`, `history` and `undo` on the same core transaction semantics
+  as the desktop application, including preview-only default behavior, ambiguous
+  selector refusal, review-required fix approval and post-application hash checks.
+- Added CLI round-trip tests for preview, apply, history and undo.
+- Added normalized CLI archives, tag-derived stable/prerelease publication,
+  curated release notes, deterministic checksums and post-publication byte checks.
+- Recorded protocol compatibility boundaries: baseline schema 1 is unchanged,
+  SARIF remains 2.1.0, and CLI additions do not remove existing fields or commands.
 
 ## Required before publication
 
-- Merge the reviewed documentation PR only after its original CI and Regression Gate are green.
-- Align Cargo/workspace, frontend and Tauri package metadata to 1.0.0 in a separately reviewed release change, including generated lockfile version entries as needed.
-- Validate CLI/protocol/cache compatibility and state the supported platform/toolchain policy.
-- Build final artifacts from the exact reviewed tag candidate; verify installation, uninstall, version output and published checksums.
-- Review license notices against final dependency inventories and bundled artifacts; optional external tools are not licensed by this project.
+- [ ] Required PR CI and Regression Gate are green.
+- [ ] Release preflight from the final `main` commit is green.
+- [ ] Windows candidate installer installs, starts, analyzes, previews/applies and
+      recovers a change, uninstalls, and reports the expected version.
+- [ ] Linux candidate CLI runs in a real Linux environment; installer launch is
+      recorded as passed or as an environment-specific limitation.
+- [ ] Published asset filenames and bytes match `checksums.txt`.
+- [ ] Release notes describe the exact tested revision and surviving limitations.
 
-- Validate Rust 1.85 or revise the declared minimum in a separate code/release change.
-- Smoke-test Windows/Linux installers, desktop analysis and rollback on the release artifacts; the retained screenshot is a welcome screen, not that evidence.
-- Verify that uploaded artifact filenames match `checksums.txt`; GitHub filename normalization previously required checksum-name correction. The current workflow still derives names before upload.
-- Review the release workflow's prerelease setting and generated notes before a stable publication; documentation alone does not change that workflow.
-- Keep real CodeQL validation and incomplete semantic graph resolution labeled Experimental; fake-CLI tests are not an integration certification.
+## Experimental boundaries
+
+Context extraction, heuristic impact/test suggestions, local SARIF path import and
+optional CodeQL CLI execution remain Experimental. Fake-CLI tests do not certify a
+real CodeQL installation or semantic equivalence. Missing required tools remain
+execution gaps rather than passing evidence.
 
 ## Release handling
 
-The GitHub draft uses the proposed `v1.0.0` name but remains unpublished. Do not
-push that tag or publish the draft until all release gates above have recorded
-evidence. The draft contains no fabricated binary/validation claim. Passing a
-documentation PR does not resolve packaging, MSRV or platform-acceptance work.
+The GitHub draft uses `v1.0.0` but remains unpublished until the gates above are
+recorded. Do not push the tag or publish the draft merely because documentation or
+metadata checks pass.

@@ -3,9 +3,9 @@ resolver = "2"
 members = ["crates/*", "apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.2.2"
+version = "1.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.90"
 license = "Apache-2.0"
 authors = ["CodeForge Engine contributors"]
 repository = "https://github.com/styayur/codeforge-engine"

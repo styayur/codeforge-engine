@@ -1,14 +1,14 @@
 # Development
 
-Use current stable Rust, Node.js 22 and pnpm 12, matching CI. Cargo declares
-Rust 1.85, but the current workflows test stable, not the minimum version; that
-MSRV must be validated before a 1.0 compatibility claim. Windows desktop builds
+Use current stable Rust, Node.js 22 and pnpm 12, matching CI. Cargo declares Rust
+1.90, and CI runs a dedicated workspace check with that toolchain. Windows desktop builds
 need Visual Studio C++ Build Tools and WebView2. Linux requires WebKitGTK 4.1,
 GTK 3, AppIndicator, librsvg and patchelf as listed in the CI workflow.
 
 ## Required checks
 
 ```bash
+python scripts/check_release_metadata.py
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --bins --tests

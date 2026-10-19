@@ -1,7 +1,8 @@
 # Documentation
 
 Start with the [project README](../README.md) for installation and a first scan.
-v1.0.0 is not published; source-only experimental commands are labeled explicitly.
+v1.0.0 is the current stable release; Experimental capabilities are labeled
+explicitly and remain opt-in.
 
 | Question | Guide |
 |---|---|
