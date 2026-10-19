@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Review responses include additive coverage metadata: selected scope and languages, indexed versus selected files, relevant engine availability, external-analysis intent, and explicit coverage limitations.
+- The desktop review view shows the coverage strip before diagnostics so a small finding count is not mistaken for repository-wide assurance.
+
+### Compatibility
+
+- Old review reports without coverage deserialize with an explicit default; existing CLI and desktop consumers keep their previous fields.
+
 ## v1.0.0 - 2026-10-19
 
 First stable release of the local, CLI-first analysis and change-verification

@@ -22,6 +22,13 @@ Diagnostic {
 }
 ```
 
+## Review coverage
+
+`ReviewReport.coverage` is an additive object. It reports selection scope,
+requested languages, indexed/selected/submitted file counts, per-language
+counts, relevant engine status, external-analysis intent and explicit notes.
+Legacy reports without `coverage` remain readable through a default value.
+
 ## Transformation
 
 ```rust

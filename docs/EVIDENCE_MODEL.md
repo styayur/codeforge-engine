@@ -41,6 +41,21 @@ Verification retains individual `syntax`, `typecheck`, `build`, `tests`, `fuzz`,
 positive evidence. [Fleet](FLEET.md) requires passed syntax and every mandatory
 build/test check; explicit failures block application even for optional checks.
 
+## Review coverage
+
+Review responses include a `coverage` object alongside diagnostics. It records:
+
+- whether the run selected all indexed files or only Git-reported changes;
+- requested language filters, indexed files, selected files and submitted files;
+- per-language discovered and selected counts;
+- relevant engine availability and reasons for missing tools;
+- whether external analysis was requested;
+- explicit limitations, including that submitted-file counts are not line or
+  branch coverage and that zero diagnostics do not prove absence of defects.
+
+Older review reports without this field deserialize with an empty default. The
+field is evidence about scope and execution, not a quality score.
+
 ## Traceability
 
 Repository evidence bundles can contain `report.md`, `report.json`,

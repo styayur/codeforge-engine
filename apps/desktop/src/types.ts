@@ -92,6 +92,27 @@ export interface ReviewReport {
   languages: string[];
   engines_used: string[];
   duration_ms: number;
+  coverage?: ReviewCoverage;
+}
+
+export interface LanguageCoverage {
+  language: string;
+  discovered_files: number;
+  discovered_bytes: number;
+  selected_files: number;
+  submitted_files: number;
+}
+
+export interface ReviewCoverage {
+  selection: "all_indexed_files" | "changed_files";
+  requested_languages: string[];
+  discovered_files: number;
+  selected_files: number;
+  submitted_files: number;
+  languages: LanguageCoverage[];
+  engines: EngineStatus[];
+  external_analysis_requested: boolean;
+  notes: string[];
 }
 
 export interface FilePatch {
