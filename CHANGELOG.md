@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1 - 2026-10-20
+
+### Fixed
+
+- Matched baseline entries created under an older rule-semantics version now enter human review instead of remaining silently accepted.
+- Benchmark environment data now resolves Git revision and worktree state from the benchmark project root, and records a clean worktree explicitly.
+
 ## v1.1.0 - 2026-10-20
 
 ### Added

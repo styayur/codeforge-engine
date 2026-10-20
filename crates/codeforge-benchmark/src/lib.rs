@@ -1,6 +1,7 @@
 //! Benchmark execution and statistics. Results are only emitted from measured runs.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use codeforge_protocol::{BenchmarkResult, TimingSummary};
 use codeforge_verification::{CommandSpec, VerificationError, VerificationPipeline};
@@ -74,6 +75,17 @@ impl BenchmarkRunner {
         before_command: CommandSpec,
         after_command: CommandSpec,
     ) -> Result<BenchmarkResult, BenchmarkError> {
+        self.compare_at(Path::new("."), metric, before_command, after_command)
+            .await
+    }
+
+    pub async fn compare_at(
+        &self,
+        root: &Path,
+        metric: impl Into<String>,
+        before_command: CommandSpec,
+        after_command: CommandSpec,
+    ) -> Result<BenchmarkResult, BenchmarkError> {
         let command = Some(before_command.command_line());
         let before = self.measure(before_command).await?;
         let after = self.measure(after_command).await?;
@@ -89,13 +101,17 @@ impl BenchmarkRunner {
             warmup: self.warmup,
             samples: self.samples,
             command,
-            environment: environment(),
+            environment: environment_at(root),
             timestamp: chrono::Utc::now(),
         })
     }
 }
 
 pub fn environment() -> BTreeMap<String, String> {
+    environment_at(Path::new("."))
+}
+
+pub fn environment_at(root: &Path) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
     values.insert("os".to_owned(), std::env::consts::OS.to_owned());
     values.insert("arch".to_owned(), std::env::consts::ARCH.to_owned());
@@ -107,34 +123,35 @@ pub fn environment() -> BTreeMap<String, String> {
     if let Ok(cpus) = std::thread::available_parallelism() {
         values.insert("logical_cpus".to_owned(), cpus.get().to_string());
     }
-    if let Some(commit) = command_output("git", &["rev-parse", "HEAD"]) {
+    if let Some(commit) = command_output(root, "git", &["rev-parse", "HEAD"]) {
         values.insert("git_commit".to_owned(), commit);
     }
-    if let Some(status) = command_output("git", &["status", "--porcelain"]) {
+    if let Some(status) = command_output(root, "git", &["status", "--porcelain"]) {
         values.insert(
             "git_worktree".to_owned(),
             if status.is_empty() { "clean" } else { "dirty" }.to_owned(),
         );
     }
-    if let Some(rustc) = command_output("rustc", &["--version"]) {
+    if let Some(rustc) = command_output(root, "rustc", &["--version"]) {
         values.insert("rustc".to_owned(), rustc);
     }
-    if let Some(cargo) = command_output("cargo", &["--version"]) {
+    if let Some(cargo) = command_output(root, "cargo", &["--version"]) {
         values.insert("cargo".to_owned(), cargo);
     }
     values
 }
 
-fn command_output(program: &str, args: &[&str]) -> Option<String> {
+fn command_output(root: &Path, program: &str, args: &[&str]) -> Option<String> {
     let output = std::process::Command::new(program)
         .args(args)
+        .current_dir(root)
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    (!text.is_empty()).then_some(text)
+    Some(text)
 }
 
 #[cfg(test)]
@@ -158,10 +175,12 @@ mod tests {
     }
 
     #[test]
-    fn environment_records_version_and_platform() {
-        let values = environment();
+    fn environment_records_version_and_target_root() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let values = environment_at(temp.path());
         assert_eq!(values["codeforge_version"], env!("CARGO_PKG_VERSION"));
         assert!(values.contains_key("os"));
         assert!(values.contains_key("arch"));
+        assert!(!values.contains_key("git_commit"));
     }
 }

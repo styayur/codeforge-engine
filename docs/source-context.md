@@ -1,6 +1,6 @@
 # On-demand context and impact suggestions
 
-Experimental and included in the v1.1.0 package; never part of the default scan path.
+Experimental and included in the v1.1.1 package; never part of the default scan path.
 
 ```bash
 codeforge context . --query verification --limit 10 --max-bytes 32768

@@ -425,7 +425,7 @@ impl CodeForgeEngine {
             summary,
             warmup: 1,
             samples,
-            environment: codeforge_benchmark::environment(),
+            environment: codeforge_benchmark::environment_at(self.root()),
         })
     }
 
@@ -509,7 +509,11 @@ impl CodeForgeEngine {
         ) {
             (Some(before), Some(after)) => {
                 let runner = BenchmarkRunner::new(1, 3)?;
-                Some(runner.compare("optimization", before, after).await?)
+                Some(
+                    runner
+                        .compare_at(self.root(), "optimization", before, after)
+                        .await?,
+                )
             }
             _ => None,
         };
