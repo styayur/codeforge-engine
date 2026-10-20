@@ -1,0 +1,133 @@
+{
+  "captured_at": "2026-10-20T14:08:51.7281167+08:00",
+  "host": "Microsoft Windows NT 10.0.26200.0",
+  "cpu": "AMD Ryzen 7 H 255 w/ Radeon 780M Graphics",
+  "logical_cpus": 16,
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+  "workload": "C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81",
+  "v1_0_0_binary_bytes": 16045056,
+  "v1_1_1_binary_bytes": 16102400,
+  "warmups": 2,
+  "results": [
+    {
+      "command": "scan C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --json",
+      "v1_0_0": {
+        "mean_ms": 2825.885,
+        "median_ms": 2820.912,
+        "p95_ms": 2899.455,
+        "min_ms": 2707.22,
+        "max_ms": 2929.387,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2862.8721,
+          2824.8134,
+          2847.6232,
+          2817.0115,
+          2808.383,
+          2794.0409,
+          2857.4582,
+          2929.387,
+          2810.0372,
+          2707.2203
+        ]
+      },
+      "v1_1_1": {
+        "mean_ms": 2697.635,
+        "median_ms": 2690.456,
+        "p95_ms": 2763.082,
+        "min_ms": 2652.165,
+        "max_ms": 2768.705,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2683.4868,
+          2670.6954,
+          2671.0664,
+          2680.4438,
+          2652.1648,
+          2697.4258,
+          2697.9437,
+          2698.2067,
+          2756.2096,
+          2768.7052
+        ]
+      }
+    },
+    {
+      "command": "review C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --json",
+      "v1_0_0": {
+        "mean_ms": 2776.812,
+        "median_ms": 2768.0,
+        "p95_ms": 2836.388,
+        "min_ms": 2739.58,
+        "max_ms": 2857.858,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2758.0513,
+          2788.8519,
+          2777.9483,
+          2857.8577,
+          2787.72,
+          2810.1462,
+          2743.6235,
+          2747.2844,
+          2757.0583,
+          2739.5797
+        ]
+      },
+      "v1_1_1": {
+        "mean_ms": 2763.082,
+        "median_ms": 2749.991,
+        "p95_ms": 2825.915,
+        "min_ms": 2719.768,
+        "max_ms": 2838.882,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2719.7683,
+          2724.9835,
+          2748.1039,
+          2730.5625,
+          2724.1862,
+          2810.0666,
+          2790.4746,
+          2751.8788,
+          2838.8818,
+          2791.9169
+        ]
+      }
+    },
+    {
+      "command": "ci C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --fail-on none --json",
+      "v1_0_0": {
+        "mean_ms": 2884.417,
+        "median_ms": 2891.246,
+        "p95_ms": 2933.523,
+        "min_ms": 2792.34,
+        "max_ms": 2939.367,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2939.367,
+          2910.1481,
+          2888.9846,
+          2891.2458,
+          2792.3402
+        ]
+      },
+      "v1_1_1": {
+        "mean_ms": 2798.209,
+        "median_ms": 2805.061,
+        "p95_ms": 2821.025,
+        "min_ms": 2753.756,
+        "max_ms": 2821.373,
+        "mean_peak_working_set_bytes": 0.0,
+        "samples": [
+          2821.373,
+          2805.0608,
+          2819.635,
+          2791.2189,
+          2753.7562
+        ]
+      }
+    }
+  ]
+}
