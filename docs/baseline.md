@@ -64,7 +64,7 @@ codeforge baseline accept --path ./repo --file .codeforge/baseline.json --findin
 codeforge baseline false-positive --path ./repo --file .codeforge/baseline.json --finding <fingerprint> --reason "..."
 codeforge baseline unreview --path ./repo --file .codeforge/baseline.json --finding <fingerprint>
 codeforge baseline prune --path ./repo --file .codeforge/baseline.json
-codeforge baseline prune --path ./repo --file .codeforge/baseline.json --apply
+codeforge baseline prune --path ./repo --file .codeforge/baseline.json --complete-scan --apply
 codeforge baseline migrate --from legacy.json --to .codeforge/baseline.json
 ```
 
@@ -72,7 +72,13 @@ Baseline writes are explicit. Audit, review, and CI are read-only with respect
 to the baseline.
 
 `prune` re-evaluates current diagnostics and is a dry run unless `--apply` is
-provided. It removes only entries classified as resolved or stale. If any
-structural/context match is ambiguous, `--apply` refuses the entire write and
-leaves the baseline unchanged. Use `--include-fixtures` when the reviewed
-baseline intentionally contains fixture findings.
+provided. It removes only entries classified as `Resolved`; `Stale` entries are
+reported and retained for review. `--apply` additionally requires
+`--complete-scan` and a complete all-file review with no language filter and no
+unavailable relevant lint engine. Ambiguous matches, partial scans, changed-file
+scopes or unavailable analyzers block the entire write. Use `--include-fixtures`
+when the reviewed baseline intentionally contains fixture findings.
+
+Rule staleness compares `rule_version` with the explicit CodeForge rule
+semantics version, not the software package version. A missing diagnostic is only
+treated as resolved when the scan evidence establishes complete evaluation.

@@ -1,7 +1,7 @@
 # Security policy
 
 Read the [security model](docs/SECURITY.md) for process, source and evidence
-boundaries. CodeForge Engine v1.0.0 is the latest stable release. There is no
+boundaries. CodeForge Engine v1.1.0 is the latest stable release. There is no
 long-term-support or security-response-time guarantee.
 
 Use [GitHub private vulnerability reporting](https://github.com/styayur/codeforge-engine/security/advisories/new)

@@ -1,15 +1,19 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 - 2026-10-20
 
 ### Added
 
 - Review responses include additive coverage metadata: selected scope and languages, indexed versus selected files, relevant engine availability, external-analysis intent, and explicit coverage limitations.
 - The desktop review view shows the coverage strip before diagnostics so a small finding count is not mistaken for repository-wide assurance.
+- Benchmark summaries now include P95 latency and record CodeForge/version, Git revision/worktree state, OS, architecture and local Rust tool versions when available.
 
 ### Fixed
 
-- `baseline prune` now evaluates the current workspace, defaults to a dry run, requires `--apply` to write, reports removable entries, and refuses the entire write on ambiguous structural/context matches.
+- Baseline pruning now evaluates the current workspace, defaults to a dry run, removes only resolved entries, retains stale entries for review, requires `--complete-scan --apply`, and refuses writes on ambiguous matches or incomplete scan evidence.
+- Rule lifecycle checks now compare an explicit rule semantics version instead of the CodeForge package version.
+- Python `None` comparisons now use AST operands, avoiding string literals and chained-comparison rewrites.
+- Java empty-catch detection now uses the catch body AST, catches whitespace-empty handlers and skips documented or nonempty handlers.
 
 ### Compatibility
 

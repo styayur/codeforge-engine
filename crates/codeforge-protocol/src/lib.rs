@@ -26,6 +26,10 @@ pub enum ProtocolError {
     Json(#[from] serde_json::Error),
 }
 
+/// Semantic version of CodeForge's built-in rule behavior and fingerprints.
+/// This is independent from the software package version.
+pub const RULE_SEMANTICS_VERSION: &str = "1";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
@@ -639,7 +643,7 @@ impl Diagnostic {
             codeforge_rule_id: None,
             source_context: SourceContext::Production,
             symbol: None,
-            rule_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            rule_version: Some(RULE_SEMANTICS_VERSION.to_owned()),
             disposition: FindingDisposition::Unreviewed,
             disposition_reason: None,
             reviewed_at: None,
@@ -963,6 +967,8 @@ pub struct TimingSummary {
     pub variance: f64,
     #[serde(default)]
     pub stddev: f64,
+    #[serde(default)]
+    pub p95: f64,
     pub min: f64,
     pub max: f64,
 }
@@ -992,6 +998,7 @@ impl TimingSummary {
                 .sum::<f64>()
                 / count as f64
         };
+        let p95 = percentile(&samples, 95.0);
         Self {
             unit: unit.into(),
             min: samples.first().copied().unwrap_or_default(),
@@ -1001,7 +1008,24 @@ impl TimingSummary {
             median,
             variance,
             stddev: variance.sqrt(),
+            p95,
         }
+    }
+}
+
+fn percentile(sorted_samples: &[f64], percentile: f64) -> f64 {
+    if sorted_samples.is_empty() {
+        return 0.0;
+    }
+    let bounded = percentile.clamp(0.0, 100.0) / 100.0;
+    let position = bounded * (sorted_samples.len() - 1) as f64;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    if lower == upper {
+        sorted_samples[lower]
+    } else {
+        let weight = position - lower as f64;
+        sorted_samples[lower] * (1.0 - weight) + sorted_samples[upper] * weight
     }
 }
 
@@ -2024,6 +2048,28 @@ mod tests {
                 .get("semanticVersion")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn timing_summary_reports_p95_and_keeps_legacy_payload_readable() {
+        let summary = TimingSummary::from_samples(
+            "milliseconds",
+            (1..=10).map(|value| value as f64).collect(),
+        );
+        assert_eq!(summary.median, 5.5);
+        assert!((summary.p95 - 9.55).abs() < 1e-9);
+        let legacy = serde_json::json!({
+            "unit": "milliseconds",
+            "samples": [1.0, 2.0],
+            "mean": 1.5,
+            "median": 1.5,
+            "variance": 0.25,
+            "stddev": 0.5,
+            "min": 1.0,
+            "max": 2.0
+        });
+        let restored: TimingSummary = serde_json::from_value(legacy).expect("legacy timing");
+        assert_eq!(restored.p95, 0.0);
     }
 
     #[test]

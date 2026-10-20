@@ -153,6 +153,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          name: CodeForge Engine ${{ env.RELEASE_TAG }}
           body_path: docs/releases/${{ env.RELEASE_TAG }}.md
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           make_latest: ${{ !contains(env.RELEASE_TAG, '-') }}
@@ -174,4 +175,3 @@ jobs:
           mkdir -p published
           gh release download "$RELEASE_TAG" --dir published --clobber
           python3 scripts/checksum_release_assets.py verify artifacts/checksums.txt published
-

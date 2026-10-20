@@ -553,16 +553,28 @@ fn python_rule(source: &str, node: Node<'_>) -> Option<Finding> {
                 title: "Replace bare except".to_owned(),
             }),
         }),
-        "comparison_operator"
-            if text.contains("None") && (text.contains("==") || text.contains("!=")) =>
-        {
-            let (operator, replacement_operator) = if text.contains("!=") {
-                ("!=", " is not ")
+        "comparison_operator" => {
+            let mut cursor = node.walk();
+            let children = node.children(&mut cursor).collect::<Vec<_>>();
+            let mut operand_cursor = node.walk();
+            let operands = node.named_children(&mut operand_cursor).collect::<Vec<_>>();
+            if operands.len() != 2 || !operands.iter().any(|operand| operand.kind() == "none") {
+                return None;
+            }
+            let operator = children
+                .iter()
+                .find(|child| matches!(child.kind(), "==" | "!="))?;
+            let replacement_operator = if operator.kind() == "!=" {
+                " is not "
             } else {
-                ("==", " is ")
+                " is "
             };
-            let (left, right) = text.split_once(operator)?;
-            let replacement = format!("{}{}{}", left.trim(), replacement_operator, right.trim());
+            let replacement = format!(
+                "{}{}{}",
+                node_text(source, operands[0]).trim(),
+                replacement_operator,
+                node_text(source, operands[1]).trim()
+            );
             Some(Finding {
                 rule_id: "PY-CORRECTNESS-001".to_owned(),
                 severity: Severity::Warning,
@@ -800,18 +812,25 @@ fn javascript_rule(source: &str, node: Node<'_>) -> Option<Finding> {
 fn java_rule(source: &str, node: Node<'_>) -> Option<Finding> {
     let text = node_text(source, node);
     match node.kind() {
-        "catch_clause" if text.contains("{}") => Some(Finding {
-            rule_id: "JAVA-CORRECTNESS-001".to_owned(),
-            severity: Severity::Warning,
-            category: DiagnosticCategory::Correctness,
-            confidence: Confidence::Medium,
-            message: "Empty catch block swallows failures".to_owned(),
-            explanation: "Log, translate, or explicitly document why the exception can be ignored."
-                .to_owned(),
-            start_byte: node.start_byte(),
-            end_byte: node.end_byte(),
-            fix: None,
-        }),
+        "catch_clause" => {
+            let body = node.child_by_field_name("body")?;
+            if body.named_child_count() != 0 {
+                return None;
+            }
+            Some(Finding {
+                rule_id: "JAVA-CORRECTNESS-001".to_owned(),
+                severity: Severity::Warning,
+                category: DiagnosticCategory::Correctness,
+                confidence: Confidence::Medium,
+                message: "Empty catch block swallows failures".to_owned(),
+                explanation:
+                    "Log, translate, or explicitly document why the exception can be ignored."
+                        .to_owned(),
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+                fix: None,
+            })
+        }
         "method_invocation" if text.starts_with("System.out.print") => Some(Finding {
             rule_id: "JAVA-MAINTAINABILITY-001".to_owned(),
             severity: Severity::Hint,
@@ -932,6 +951,62 @@ mod tests {
             .expect("finding");
         assert_eq!(finding.fixes.len(), 1);
         assert_eq!(finding.fixes[0].edits[0].replacement, "value is None");
+    }
+
+    #[test]
+    fn python_none_rule_ignores_string_literals_and_chained_comparisons() {
+        for source in [
+            "if value == \"None\":\n    pass\n",
+            "if value == None == other:\n    pass\n",
+            "if value is None:\n    pass\n",
+        ] {
+            let findings = analyze_source(
+                "python-builtin",
+                Language::Python,
+                Path::new("example.py"),
+                source,
+            );
+            assert!(
+                !findings
+                    .iter()
+                    .any(|finding| finding.rule_id == "PY-CORRECTNESS-001"),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn java_empty_catch_rule_uses_ast_body_and_ignores_documented_or_nonempty_handlers() {
+        let empty = "class Example { void run() { try { work(); } catch (Exception e) { } } }";
+        let findings = analyze_source(
+            "java-builtin",
+            Language::Java,
+            Path::new("Example.java"),
+            empty,
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.rule_id == "JAVA-CORRECTNESS-001")
+        );
+
+        for source in [
+            "class Example { void run() { try { work(); } catch (Exception e) { /* documented */ } } }",
+            "class Example { void run() { try { work(); } catch (Exception e) { log(e); } } }",
+        ] {
+            let findings = analyze_source(
+                "java-builtin",
+                Language::Java,
+                Path::new("Example.java"),
+                source,
+            );
+            assert!(
+                !findings
+                    .iter()
+                    .any(|finding| finding.rule_id == "JAVA-CORRECTNESS-001"),
+                "{source}"
+            );
+        }
     }
 
     #[test]
