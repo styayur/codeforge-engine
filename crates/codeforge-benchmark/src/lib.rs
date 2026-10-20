@@ -100,10 +100,41 @@ pub fn environment() -> BTreeMap<String, String> {
     values.insert("os".to_owned(), std::env::consts::OS.to_owned());
     values.insert("arch".to_owned(), std::env::consts::ARCH.to_owned());
     values.insert("family".to_owned(), std::env::consts::FAMILY.to_owned());
+    values.insert(
+        "codeforge_version".to_owned(),
+        env!("CARGO_PKG_VERSION").to_owned(),
+    );
     if let Ok(cpus) = std::thread::available_parallelism() {
         values.insert("logical_cpus".to_owned(), cpus.get().to_string());
     }
+    if let Some(commit) = command_output("git", &["rev-parse", "HEAD"]) {
+        values.insert("git_commit".to_owned(), commit);
+    }
+    if let Some(status) = command_output("git", &["status", "--porcelain"]) {
+        values.insert(
+            "git_worktree".to_owned(),
+            if status.is_empty() { "clean" } else { "dirty" }.to_owned(),
+        );
+    }
+    if let Some(rustc) = command_output("rustc", &["--version"]) {
+        values.insert("rustc".to_owned(), rustc);
+    }
+    if let Some(cargo) = command_output("cargo", &["--version"]) {
+        values.insert("cargo".to_owned(), cargo);
+    }
     values
+}
+
+fn command_output(program: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!text.is_empty()).then_some(text)
 }
 
 #[cfg(test)]
@@ -123,5 +154,14 @@ mod tests {
         let summary = runner.measure(spec).await.expect("measure");
         assert_eq!(summary.samples.len(), 2);
         assert!(summary.median >= 0.0);
+        assert!(summary.p95 >= summary.median);
+    }
+
+    #[test]
+    fn environment_records_version_and_platform() {
+        let values = environment();
+        assert_eq!(values["codeforge_version"], env!("CARGO_PKG_VERSION"));
+        assert!(values.contains_key("os"));
+        assert!(values.contains_key("arch"));
     }
 }

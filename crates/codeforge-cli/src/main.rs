@@ -3,12 +3,14 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use codeforge_baseline::{BaselineStore, PrecisionRow};
-use codeforge_core::{CodeForgeEngine, ReviewOptions};
+use codeforge_baseline::{BaselineStore, PrecisionRow, ScanEvidence};
+use codeforge_core::{CodeForgeEngine, ReviewOptions, ReviewSelection};
 use codeforge_fleet::{
     Doctor, FleetCommand as FleetOperation, FleetConfig, FleetRunOptions, FleetRunner,
 };
-use codeforge_protocol::{FindingDisposition, Language, Severity, diagnostics_to_sarif};
+use codeforge_protocol::{
+    Capability, FindingDisposition, Language, Severity, diagnostics_to_sarif,
+};
 use serde::Serialize;
 
 #[derive(Debug, Parser)]
@@ -304,9 +306,12 @@ struct BaselinePruneArgs {
     json: bool,
     #[arg(long)]
     include_fixtures: bool,
-    /// Remove resolved or stale entries. Without this flag pruning is a dry run.
+    /// Remove resolved entries. Without this flag pruning is a dry run.
     #[arg(long)]
     apply: bool,
+    /// Confirm that the current full scan is complete and suitable for destructive cleanup.
+    #[arg(long)]
+    complete_scan: bool,
 }
 
 #[derive(Debug, Args)]
@@ -952,9 +957,11 @@ async fn benchmark(args: BenchmarkArgs) -> Result<()> {
     } else {
         println!("Command: {}", snapshot.command.join(" "));
         println!(
-            "Samples: {}  median: {:.3} {}  variance: {:.6}",
+            "Samples: {}  median: {:.3} {}  p95: {:.3} {}  variance: {:.6}",
             snapshot.summary.samples.len(),
             snapshot.summary.median,
+            snapshot.summary.unit,
+            snapshot.summary.p95,
             snapshot.summary.unit,
             snapshot.summary.variance
         );
@@ -1040,8 +1047,50 @@ async fn baseline(args: BaselineArgs) -> Result<()> {
             } else {
                 engine.review(options).await?
             };
+            let mut scan_reasons = Vec::new();
+            let coverage = &report.coverage;
+            if coverage.selection != ReviewSelection::AllIndexedFiles {
+                scan_reasons.push("scan selected only changed files".to_owned());
+            }
+            if !coverage.requested_languages.is_empty() {
+                scan_reasons.push("scan applied a language filter".to_owned());
+            }
+            if coverage.selected_files != coverage.discovered_files {
+                scan_reasons.push(format!(
+                    "selected {} of {} indexed files",
+                    coverage.selected_files, coverage.discovered_files
+                ));
+            }
+            if coverage.submitted_files != coverage.selected_files {
+                scan_reasons.push(format!(
+                    "submitted {} of {} selected files",
+                    coverage.submitted_files, coverage.selected_files
+                ));
+            }
+            let missing_lint_engines = coverage
+                .engines
+                .iter()
+                .filter(|engine| {
+                    !engine.available && engine.metadata.capabilities.contains(&Capability::Lint)
+                })
+                .map(|engine| engine.metadata.id.clone())
+                .collect::<Vec<_>>();
+            if !missing_lint_engines.is_empty() {
+                scan_reasons.push(format!(
+                    "relevant lint engines unavailable: {}",
+                    missing_lint_engines.join(", ")
+                ));
+            }
+            if !args.complete_scan {
+                scan_reasons.push("operator did not pass --complete-scan".to_owned());
+            }
+            let scan = ScanEvidence {
+                complete: scan_reasons.is_empty(),
+                reasons: scan_reasons,
+            };
             let mut store = BaselineStore::load(&args.file)?;
-            let report = store.prune_against(&report.diagnostics, engine.root(), args.apply)?;
+            let report =
+                store.prune_against(&report.diagnostics, engine.root(), scan, args.apply)?;
             if args.apply {
                 store.save(&args.file)?;
             }
@@ -1054,19 +1103,35 @@ async fn baseline(args: BaselineArgs) -> Result<()> {
                         report.ambiguous
                     );
                 }
+                if report.blocked_by_incomplete_scan {
+                    eprintln!(
+                        "warning: incomplete scan evidence blocks --apply: {}",
+                        report.scan.reasons.join("; ")
+                    );
+                }
                 println!(
-                    "{} {} resolved/stale entries; {} retained.",
+                    "{} {} resolved entries; {} stale entries retained; {} entries retained.",
                     if report.applied {
                         "Removed"
                     } else {
                         "Would remove"
                     },
                     report.removable,
+                    report.stale,
                     report.retained
                 );
-                for entry in &report.entries {
+                for entry in &report.resolved_entries {
                     println!(
-                        "  [{}] {} {} ({:?})",
+                        "  resolved [{}] {} {} ({:?})",
+                        entry.rule_id,
+                        entry.path.display(),
+                        entry.fingerprint,
+                        entry.lifecycle
+                    );
+                }
+                for entry in &report.stale_entries {
+                    println!(
+                        "  stale-retained [{}] {} {} ({:?})",
                         entry.rule_id,
                         entry.path.display(),
                         entry.fingerprint,

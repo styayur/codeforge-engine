@@ -500,7 +500,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "codeforge-baseline"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "codeforge-protocol",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-benchmark"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "codeforge-protocol",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "codeforge-benchmark",
@@ -572,7 +572,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-desktop"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-baseline",
  "codeforge-core",
@@ -591,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-diagnostics"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-protocol",
  "serde",
@@ -600,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-engines"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "codeforge-protocol",
@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-fleet"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-git"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-protocol",
  "serde",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-plugin"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-protocol",
  "semver",
@@ -675,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-protocol"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "serde",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-scheduler"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "tempfile",
  "thiserror 2.0.21",
@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-transform"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "codeforge-protocol",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-verification"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-protocol",
  "serde",
@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "codeforge-workspace"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codeforge-protocol",
  "ignore",

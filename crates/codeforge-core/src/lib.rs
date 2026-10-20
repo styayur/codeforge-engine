@@ -6,7 +6,7 @@ pub mod context;
 pub mod external;
 mod sandbox;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::Instant;
@@ -118,6 +118,16 @@ pub struct BenchmarkSnapshot {
     pub metric: String,
     pub command: Vec<String>,
     pub summary: TimingSummary,
+    #[serde(default = "default_benchmark_warmup")]
+    pub warmup: usize,
+    #[serde(default)]
+    pub samples: usize,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
+}
+
+const fn default_benchmark_warmup() -> usize {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -413,6 +423,9 @@ impl CodeForgeEngine {
             metric: command.label.clone(),
             command: command.command_line(),
             summary,
+            warmup: 1,
+            samples,
+            environment: codeforge_benchmark::environment(),
         })
     }
 

@@ -9,7 +9,7 @@ autonomous coding agent.
 [![CI](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[Documentation](docs/README.md) · [Latest stable release: v1.0.0](https://github.com/styayur/codeforge-engine/releases/tag/v1.0.0) · [Changelog](CHANGELOG.md)
+[Documentation](docs/README.md) · [Latest stable release: v1.1.0](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.0) · [Changelog](CHANGELOG.md)
 
 ## Why CodeForge
 
@@ -75,7 +75,7 @@ missing required tools do not count as a pass.
 ## Installation
 
 Download the CLI archive for your platform from the
-[v1.0.0 release](https://github.com/styayur/codeforge-engine/releases/tag/v1.0.0),
+[v1.1.0 release](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.0),
 verify it against `checksums.txt`, and extract `codeforge` (`codeforge.exe` on
 Windows). Desktop packages are available on the same page. Windows requires
 WebView2; Linux desktop builds require WebKitGTK. Packages do not install optional
@@ -84,7 +84,7 @@ language tools.
 To build the CLI from the tagged source instead:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/styayur/codeforge-engine.git
+git clone --branch v1.1.0 --depth 1 https://github.com/styayur/codeforge-engine.git
 cd codeforge-engine
 cargo install --locked --path crates/codeforge-cli
 codeforge --version
@@ -121,7 +121,7 @@ repository. See [Verification](docs/VERIFICATION.md) and
 [baseline setup](docs/baseline.md); a baseline must be reviewed, not generated
 merely to make CI green.
 
-Experimental commands included in the v1.0.0 package:
+Experimental commands included in the v1.1.0 package:
 
 ```bash
 codeforge context . --query verification --limit 10 --max-bytes 32768

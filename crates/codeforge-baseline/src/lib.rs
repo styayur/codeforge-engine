@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use codeforge_protocol::{
     BaselineComparison, BaselineComparisonEntry, BaselineEntry, BaselineFile, BaselineMatchKind,
-    Diagnostic, FindingDisposition, FindingLifecycle, FindingStatus, SourceContext,
+    Diagnostic, FindingDisposition, FindingLifecycle, FindingStatus, RULE_SEMANTICS_VERSION,
+    SourceContext,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -29,6 +30,8 @@ pub enum BaselineError {
     Invalid(String),
     #[error("baseline pruning blocked by {0} ambiguous structural/context match(es)")]
     AmbiguousPrune(usize),
+    #[error("baseline pruning requires complete, traceable scan evidence: {0}")]
+    IncompleteScanPrune(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -94,6 +97,21 @@ pub struct PruneCandidate {
     pub lifecycle: FindingLifecycle,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScanEvidence {
+    pub complete: bool,
+    pub reasons: Vec<String>,
+}
+
+impl Default for ScanEvidence {
+    fn default() -> Self {
+        Self {
+            complete: false,
+            reasons: vec!["complete scan was not evidenced".to_owned()],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PruneReport {
     pub applied: bool,
@@ -101,9 +119,13 @@ pub struct PruneReport {
     pub removable: usize,
     pub removed: usize,
     pub retained: usize,
+    pub stale: usize,
     pub ambiguous: usize,
     pub blocked_by_ambiguity: bool,
-    pub entries: Vec<PruneCandidate>,
+    pub blocked_by_incomplete_scan: bool,
+    pub scan: ScanEvidence,
+    pub resolved_entries: Vec<PruneCandidate>,
+    pub stale_entries: Vec<PruneCandidate>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -183,16 +205,13 @@ impl BaselineStore {
         &mut self,
         diagnostics: &[Diagnostic],
         repository_root: impl AsRef<Path>,
+        scan: ScanEvidence,
         apply: bool,
     ) -> Result<PruneReport, BaselineError> {
         let comparison = self.compare(diagnostics, repository_root);
-        if apply && !comparison.ambiguous.is_empty() {
-            return Err(BaselineError::AmbiguousPrune(comparison.ambiguous.len()));
-        }
-        let mut candidates = comparison
+        let mut resolved_entries = comparison
             .resolved
             .into_iter()
-            .chain(comparison.stale)
             .map(|entry| PruneCandidate {
                 fingerprint: entry.fingerprint,
                 rule_id: entry.rule_id,
@@ -201,11 +220,36 @@ impl BaselineStore {
                 lifecycle: entry.lifecycle,
             })
             .collect::<Vec<_>>();
-        candidates.sort_by(|left, right| left.fingerprint.cmp(&right.fingerprint));
+        let mut stale_entries = comparison
+            .stale
+            .into_iter()
+            .map(|entry| PruneCandidate {
+                fingerprint: entry.fingerprint,
+                rule_id: entry.rule_id,
+                path: entry.path,
+                disposition: entry.disposition,
+                lifecycle: entry.lifecycle,
+            })
+            .collect::<Vec<_>>();
+        resolved_entries.sort_by(|left, right| left.fingerprint.cmp(&right.fingerprint));
+        stale_entries.sort_by(|left, right| left.fingerprint.cmp(&right.fingerprint));
+        let ambiguous = comparison.ambiguous.len();
+        if apply && ambiguous > 0 {
+            return Err(BaselineError::AmbiguousPrune(ambiguous));
+        }
+        if apply && !scan.complete {
+            return Err(BaselineError::IncompleteScanPrune(
+                if scan.reasons.is_empty() {
+                    "scan evidence did not establish completeness".to_owned()
+                } else {
+                    scan.reasons.join("; ")
+                },
+            ));
+        }
         let inspected = self.file.entries.len();
-        let removable = candidates.len();
+        let removable = resolved_entries.len();
         let removed = if apply {
-            let fingerprints = candidates
+            let fingerprints = resolved_entries
                 .iter()
                 .map(|entry| entry.fingerprint.as_str())
                 .collect::<BTreeSet<_>>();
@@ -217,28 +261,20 @@ impl BaselineStore {
         } else {
             0
         };
-        let ambiguous = comparison.ambiguous.len();
         Ok(PruneReport {
             applied: apply,
             inspected,
             removable,
             removed,
             retained: self.file.entries.len(),
+            stale: stale_entries.len(),
             ambiguous,
             blocked_by_ambiguity: ambiguous > 0,
-            entries: candidates,
+            blocked_by_incomplete_scan: !scan.complete,
+            scan,
+            resolved_entries,
+            stale_entries,
         })
-    }
-
-    pub fn prune(&mut self) -> usize {
-        let before = self.file.entries.len();
-        self.file.entries.retain(|entry| {
-            !matches!(
-                entry.lifecycle,
-                FindingLifecycle::Resolved | FindingLifecycle::Stale
-            )
-        });
-        before - self.file.entries.len()
     }
 
     pub fn set_disposition(
@@ -640,7 +676,7 @@ fn is_rule_version_stale(entry: &BaselineEntry) -> bool {
     entry
         .rule_version
         .as_deref()
-        .is_some_and(|version| version != env!("CARGO_PKG_VERSION"))
+        .is_some_and(|version| version != RULE_SEMANTICS_VERSION)
 }
 
 pub fn fingerprint_diagnostic(
@@ -972,8 +1008,12 @@ mod tests {
             )
             .expect("accept");
 
+        let complete = ScanEvidence {
+            complete: true,
+            reasons: Vec::new(),
+        };
         let report = store
-            .prune_against(&[], temp.path(), false)
+            .prune_against(&[], temp.path(), complete.clone(), false)
             .expect("dry run");
         assert!(!report.applied);
         assert_eq!(report.inspected, 1);
@@ -983,7 +1023,9 @@ mod tests {
         assert!(!report.blocked_by_ambiguity);
         assert_eq!(store.entries().len(), 1);
 
-        let report = store.prune_against(&[], temp.path(), true).expect("apply");
+        let report = store
+            .prune_against(&[], temp.path(), complete, true)
+            .expect("apply");
         assert!(report.applied);
         assert_eq!(report.removed, 1);
         assert_eq!(report.retained, 0);
@@ -1021,10 +1063,74 @@ mod tests {
         })
         .expect("store");
         let error = store
-            .prune_against(&[diagnosis], temp.path(), true)
+            .prune_against(
+                &[diagnosis],
+                temp.path(),
+                ScanEvidence {
+                    complete: true,
+                    reasons: Vec::new(),
+                },
+                true,
+            )
             .expect_err("ambiguous prune must fail");
         assert!(matches!(error, BaselineError::AmbiguousPrune(1)));
         assert_eq!(store.entries().len(), 2);
+    }
+
+    #[test]
+    fn prune_retains_stale_entries_and_requires_complete_scan() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let stale_entry = BaselineEntry {
+            fingerprint: "stale".to_owned(),
+            structural_fingerprint: None,
+            context_fingerprint: None,
+            rule_id: "RS-TEST-001".to_owned(),
+            path: PathBuf::from("src/lib.rs"),
+            symbol: None,
+            context_hash: None,
+            source_context: SourceContext::Production,
+            disposition: FindingDisposition::Accepted,
+            reason: Some("reviewed".to_owned()),
+            first_seen: Utc::now(),
+            last_reviewed: Some(Utc::now()),
+            rule_version: Some("old-rule-version".to_owned()),
+            lifecycle: FindingLifecycle::Active,
+        };
+        let mut store = BaselineStore::from_file(BaselineFile {
+            schema_version: 1,
+            codeforge_version: env!("CARGO_PKG_VERSION").to_owned(),
+            entries: vec![stale_entry],
+        })
+        .expect("store");
+        let report = store
+            .prune_against(
+                &[],
+                temp.path(),
+                ScanEvidence {
+                    complete: true,
+                    reasons: Vec::new(),
+                },
+                true,
+            )
+            .expect("stale prune");
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.stale, 1);
+        assert_eq!(report.stale_entries[0].lifecycle, FindingLifecycle::Stale);
+        assert_eq!(store.entries().len(), 1);
+
+        let error = store
+            .prune_against(
+                &[],
+                temp.path(),
+                ScanEvidence {
+                    complete: false,
+                    reasons: vec!["scanner unavailable".to_owned()],
+                },
+                true,
+            )
+            .expect_err("incomplete scan must fail");
+        assert!(matches!(error, BaselineError::IncompleteScanPrune(_)));
+        assert_eq!(store.entries().len(), 1);
     }
 
     #[test]

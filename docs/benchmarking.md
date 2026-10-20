@@ -64,8 +64,11 @@ process-startup P95 as if they were the same metric.
 
 Configure `.codeforge.toml` or use supported detected native benchmark commands.
 The runner uses a warm-up and measured samples, recording mean, median, variance,
-minimum and maximum. Run `codeforge benchmark . --samples 5` only for a trusted
-project. A command may modify files or access the network.
+standard deviation, P95, minimum and maximum. Environment records include the
+operating system, architecture, logical CPUs, CodeForge version, Git commit and
+worktree state when available, plus `rustc` and `cargo` versions. Run
+`codeforge benchmark . --samples 5` only for a trusted project. A command may
+modify files or access the network.
 
 Preserve full measurements and regressions. Record command, hardware, software,
 sample count, correctness checks and limitations with every published comparison.

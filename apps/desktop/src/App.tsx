@@ -633,6 +633,11 @@ function BenchmarkSnapshotBlock({ snapshot }: { snapshot: ReturnType<typeof useA
     <div className="surface benchmark-snapshot">
       <header className="section-heading"><Activity size={17} /><h2>{snapshot.metric}</h2></header>
       <code>{snapshot.command.join(" ")}</code>
+      <p className="muted">
+        {snapshot.warmup} warm-up · {snapshot.samples} measured sample(s)
+        {snapshot.environment.git_commit ? ` · commit ${snapshot.environment.git_commit.slice(0, 12)}` : ""}
+        {snapshot.environment.rustc ? ` · ${snapshot.environment.rustc}` : ""}
+      </p>
       <div className="benchmark-block">
         <div><span>Median</span><strong>{snapshot.summary.median.toFixed(3)} {snapshot.summary.unit}</strong></div>
         <div><span>Variance</span><strong>{snapshot.summary.variance.toFixed(6)}</strong></div>

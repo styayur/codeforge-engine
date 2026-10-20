@@ -203,6 +203,9 @@ export interface BenchmarkSnapshot {
   metric: string;
   command: string[];
   summary: TimingSummary;
+  warmup: number;
+  samples: number;
+  environment: Record<string, string>;
 }
 
 export interface OptimizationCandidate {
