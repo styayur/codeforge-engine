@@ -37,6 +37,14 @@ f3ecd5ec5103b934cd15fadfe9de942ea990ccaecd609d7582d01e2f7c32217b  codeforge-cli-
 1403eca00e5d9b0cd2cbe503cb1763993fa226af97dfc3da2620db6ac99dc2f8  codeforge-cli-v1.1.1-x86_64-unknown-linux-gnu.tar.gz
 ```
 
+## Performance comparison
+
+The published v1.0.0 and v1.1.1 Windows CLI archives were compared on one clean
+Python file: v1.1.1 medians were 2,690.456 ms for `scan`, 2,749.991 ms for
+`review` and 2,805.061 ms for syntax-only `ci`. No regression reproduced, but
+the workload is intentionally small and the result is not a broad speedup claim.
+See [Benchmarking](benchmarking.md) for raw samples, P95, environment and memory.
+
 ## Historical evidence
 
 - [v1.1.0 evidence](releases/v1.1.0-evidence.md)

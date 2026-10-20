@@ -60,6 +60,32 @@ tool inventory, sample values and process-memory method. Criterion writes its
 own reports under `target/criterion`; do not compare Criterion estimates with
 process-startup P95 as if they were the same metric.
 
+## v1.0.0 to v1.1.1 comparison
+
+A single Windows x64 host was used to compare published v1.0.0 and v1.1.1 CLI
+archives on one clean Python file. The workload exercises default startup,
+workspace indexing, review and syntax-only CI; it does not exercise a large
+repository or project build/test commands. Two warm-ups preceded 10 samples for
+`scan`/`review` and five samples for `ci`.
+
+| Command | Version | Mean ms | Median ms | P95 ms | Median peak working set |
+|---|---:|---:|---:|---:|---:|
+| scan | v1.0.0 | 2825.885 | 2820.912 | 2899.455 | 7,614,464 B |
+| scan | v1.1.1 | 2697.635 | 2690.456 | 2763.082 | 7,553,024 B |
+| review | v1.0.0 | 2776.812 | 2768.000 | 2836.388 | 7,774,208 B |
+| review | v1.1.1 | 2763.082 | 2749.991 | 2825.915 | 7,172,096 B |
+| ci | v1.0.0 | 2884.417 | 2891.246 | 2933.523 | 7,749,632 B |
+| ci | v1.1.1 | 2798.209 | 2805.061 | 2821.025 | 7,909,376 B |
+
+The CLI binary grew from 16,045,056 to 16,102,400 bytes (+57,344 bytes, about
++0.36%). No reproducible regression appeared on this small workload; observed
+timing differences are not evidence of a broad speedup. Peak working set used a
+5 ms polling method with three runs and is a coarse Windows resident-memory
+comparison.
+
+Raw data: [performance samples](archive/benchmark-history/2026-10-20-v1.1.1/performance-comparison.json)
+and [memory samples](archive/benchmark-history/2026-10-20-v1.1.1/memory-comparison.json).
+
 ## Project benchmark commands
 
 Configure `.codeforge.toml` or use supported detected native benchmark commands.

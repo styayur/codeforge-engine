@@ -1,0 +1,69 @@
+{
+  "captured_at": "2026-10-20T14:10:13.9287249+08:00",
+  "method": "poll WorkingSet64 every 5 ms; median of 3 runs",
+  "results": [
+    {
+      "command": "scan C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --json",
+      "v1_0_0": {
+        "samples": [
+          7122944.0,
+          7614464.0,
+          7700480.0
+        ],
+        "median_bytes": 7614464.0,
+        "max_bytes": 7700480.0
+      },
+      "v1_1_1": {
+        "samples": [
+          7553024.0,
+          7319552.0,
+          7598080.0
+        ],
+        "median_bytes": 7553024.0,
+        "max_bytes": 7598080.0
+      }
+    },
+    {
+      "command": "review C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --json",
+      "v1_0_0": {
+        "samples": [
+          7774208.0,
+          7299072.0,
+          7782400.0
+        ],
+        "median_bytes": 7774208.0,
+        "max_bytes": 7782400.0
+      },
+      "v1_1_1": {
+        "samples": [
+          7106560.0,
+          7966720.0,
+          7172096.0
+        ],
+        "median_bytes": 7172096.0,
+        "max_bytes": 7966720.0
+      }
+    },
+    {
+      "command": "ci C:\\Users\\StyAyur\\AppData\\Local\\Temp\\cf-perf-workload-d47e15ae10c94c768dbb2c472fec7a81 --fail-on none --json",
+      "v1_0_0": {
+        "samples": [
+          7749632.0,
+          8056832.0,
+          7720960.0
+        ],
+        "median_bytes": 7749632.0,
+        "max_bytes": 8056832.0
+      },
+      "v1_1_1": {
+        "samples": [
+          7991296.0,
+          7675904.0,
+          7909376.0
+        ],
+        "median_bytes": 7909376.0,
+        "max_bytes": 7991296.0
+      }
+    }
+  ]
+}
