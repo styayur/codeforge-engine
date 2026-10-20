@@ -644,14 +644,23 @@ fn assessment_from_entry(
     entry: &BaselineEntry,
     match_kind: BaselineMatchKind,
 ) -> FindingAssessment {
+    let stale = is_rule_version_stale(entry);
     FindingAssessment {
         diagnostic_id: diagnostic.id.clone(),
         fingerprint: entry.fingerprint.clone(),
         rule_id: diagnostic.rule_id.clone(),
         path: entry.path.clone(),
         match_kind,
-        disposition: entry.disposition,
-        lifecycle: FindingLifecycle::Active,
+        disposition: if stale {
+            FindingDisposition::HumanReview
+        } else {
+            entry.disposition
+        },
+        lifecycle: if stale {
+            FindingLifecycle::Stale
+        } else {
+            FindingLifecycle::Active
+        },
     }
 }
 
@@ -1075,6 +1084,43 @@ mod tests {
             .expect_err("ambiguous prune must fail");
         assert!(matches!(error, BaselineError::AmbiguousPrune(1)));
         assert_eq!(store.entries().len(), 2);
+    }
+
+    #[test]
+    fn matched_entry_with_old_rule_version_requires_human_review() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("src/lib.rs");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("src");
+        std::fs::write(&path, "fn value() { let value = 1; }\n").expect("source");
+        let diagnosis = diagnostic(&path, 1, "known issue");
+        let fingerprint = fingerprint_diagnostic(&diagnosis, temp.path());
+        let entry = BaselineEntry {
+            fingerprint: fingerprint.exact.clone(),
+            structural_fingerprint: Some(fingerprint.structural.clone()),
+            context_fingerprint: Some(fingerprint.context.clone()),
+            rule_id: diagnosis.rule_id.clone(),
+            path: PathBuf::from("src/lib.rs"),
+            symbol: fingerprint.symbol.clone(),
+            context_hash: Some(fingerprint.context_hash.clone()),
+            source_context: SourceContext::Production,
+            disposition: FindingDisposition::Accepted,
+            reason: Some("reviewed under an older rule".to_owned()),
+            first_seen: Utc::now(),
+            last_reviewed: Some(Utc::now()),
+            rule_version: Some("0".to_owned()),
+            lifecycle: FindingLifecycle::Active,
+        };
+        let store = BaselineStore::from_file(BaselineFile {
+            schema_version: 1,
+            codeforge_version: env!("CARGO_PKG_VERSION").to_owned(),
+            entries: vec![entry],
+        })
+        .expect("store");
+        let assessments = store.classify_diagnostics(&[diagnosis], temp.path());
+        assert_eq!(assessments.len(), 1);
+        assert_eq!(assessments[0].match_kind, BaselineMatchKind::Exact);
+        assert_eq!(assessments[0].lifecycle, FindingLifecycle::Stale);
+        assert_eq!(assessments[0].disposition, FindingDisposition::HumanReview);
     }
 
     #[test]
