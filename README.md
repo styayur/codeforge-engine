@@ -9,9 +9,9 @@ developers who need a small offline engineering tool rather than an IDE or an
 autonomous coding agent.
 
 [![CI](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Latest published release: v1.1.1](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.1) · [Changelog](CHANGELOG.md)
 
-[Documentation](docs/README.md) · [Latest published release: v1.1.1](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.1) · [Changelog](CHANGELOG.md)
+Examples below use the published v1.1.1 CLI. Subsequent default-branch changes are not automatically included in that release.
 
 ## Why CodeForge
 
@@ -157,6 +157,14 @@ actual process isolation; arbitrary manifest installation is not a complete SDK.
 [Benchmark methodology and observations](docs/benchmarking.md) include resource
 variation and do not claim a default scan speedup.
 
-CodeForge is independently usable with no LCE runtime or crate dependency.
-Licensed under [Apache-2.0](LICENSE); optional tools retain their
-[own licenses](THIRD_PARTY_LICENSES.md).
+## Known limitations
+
+Context and impact relations are bounded heuristics, not complete semantic resolution. External SARIF remains untrusted evidence and real CodeQL integration is unvalidated. A successful verification command proves only what that command checks; it is not program-equivalence proof. Desktop installation and sustained use across machines are separate from build checks.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [Development](docs/DEVELOPMENT.md) for existing tests and platform prerequisites. Use [SECURITY.md](SECURITY.md) for vulnerabilities. [Roadmap](docs/ROADMAP.md) separates release gates and future directions; this overview does not promise delivery dates.
+
+## License
+
+CodeForge is independently usable with no LCE runtime or crate dependency. It uses [Apache-2.0](LICENSE); optional tools retain their [own licenses](THIRD_PARTY_LICENSES.md). The current LICENSE restores the canonical Apache text and appendix while retaining the existing copyright notice. This corrects a nonstandard transcription, not a new license choice; historical releases and tags remain unchanged. See [license history](docs/LICENSE_HISTORY.md).
