@@ -1,5 +1,7 @@
 # CodeForge Engine
 
+**Project stage:** Alpha. Implemented workflows have automated verification; independent installation, upgrade and sustained user validation have not been audited.
+
 **Local, CLI-first code analysis and change verification.** CodeForge Engine
 finds review candidates, shows the source evidence behind them, previews changes,
 runs the checks a project declares, and records what actually happened. It is for
@@ -9,7 +11,7 @@ autonomous coding agent.
 [![CI](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/styayur/codeforge-engine/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[Documentation](docs/README.md) · [Latest stable release: v1.1.1](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.1) · [Changelog](CHANGELOG.md)
+[Documentation](docs/README.md) · [Latest published release: v1.1.1](https://github.com/styayur/codeforge-engine/releases/tag/v1.1.1) · [Changelog](CHANGELOG.md)
 
 ## Why CodeForge
 
