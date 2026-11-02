@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+
+# Monaco 0.57 pins DOMPurify 3.4.15; keep its API while fixing sanitizer advisories.
+overrides:
+  monaco-editor>dompurify: 3.4.17
