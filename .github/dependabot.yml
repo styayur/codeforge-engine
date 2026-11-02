@@ -4,11 +4,26 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      rust-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule:
       interval: weekly
+    groups:
+      desktop-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    # This ref defines the promised compiler floor, not an action runtime version.
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
+        update-types: [version-update:semver-major, version-update:semver-minor, version-update:semver-patch]
