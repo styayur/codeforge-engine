@@ -75,7 +75,7 @@ mod tests {
         assert!(
             class
                 .utf8_text(source.as_bytes())
-                .unwrap()
+                .expect("class node spans valid UTF-8 source")
                 .contains("Future<List<int>>")
         );
     }
@@ -84,9 +84,13 @@ mod tests {
     fn dart_grammar_reports_malformed_source_and_recovers_for_next_parse() {
         let mut parser =
             parser_for(Language::Dart, Some(Path::new("example.dart"))).expect("Dart grammar");
-        let malformed = parser.parse("void main( {", None).unwrap();
+        let malformed = parser
+            .parse("void main( {", None)
+            .expect("parser returns an error tree for malformed UTF-8 source text");
         assert!(malformed.root_node().has_error());
-        let valid = parser.parse("void main() {}", None).unwrap();
+        let valid = parser
+            .parse("void main() {}", None)
+            .expect("parser returns a tree after malformed input");
         assert!(!valid.root_node().has_error());
     }
 }
