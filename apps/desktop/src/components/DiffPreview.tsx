@@ -1,8 +1,15 @@
-import Editor, { DiffEditor } from "@monaco-editor/react";
+import { lazy, Suspense } from "react";
 import { FileCode2, GitCompareArrows, ShieldCheck } from "lucide-react";
 import { useAppStore } from "../store";
 import type { Diagnostic, FixPreviewResponse } from "../types";
 import { SeverityPill } from "./StatusPill";
+
+const Editor = lazy(async () => {
+  await import("../lib/monaco");
+  const module = await import("@monaco-editor/react");
+  return { default: module.default };
+});
+const DiffEditor = lazy(() => import("./LocalDiffViewer"));
 
 const languageMap: Record<string, string> = {
   python: "python",
@@ -39,22 +46,12 @@ export function DiffPreview({
           <span>{file?.path}</span>
         </div>
         {file ? (
-          <DiffEditor
+          <Suspense fallback={<div className="empty-state">Loading source comparison…</div>}><DiffEditor
             original={file.before}
             modified={file.after}
             language={languageMap[preview.diagnostic.language] ?? "plaintext"}
             theme={editorTheme}
-            options={{
-              readOnly: true,
-              renderSideBySide: true,
-              minimap: { enabled: false },
-              fontFamily: "'Cascadia Code', 'JetBrains Mono', monospace",
-              fontSize: 13,
-              lineHeight: 21,
-              scrollBeyondLastLine: false,
-              automaticLayout: true
-            }}
-          />
+          /></Suspense>
         ) : (
           <div className="empty-state">No file preview was produced.</div>
         )}
@@ -95,13 +92,13 @@ export function DiffPreview({
         {diagnostic.file}:{diagnostic.range.start_line}:{diagnostic.range.start_column} - {diagnostic.range.end_line}:{diagnostic.range.end_column}
       </div>
       {diagnostic.source && (
-        <Editor
+        <Suspense fallback={<div className="empty-state">Loading source…</div>}><Editor
           height="320px"
           language={languageMap[diagnostic.language] ?? "plaintext"}
           value={diagnostic.source}
           theme={editorTheme}
           options={{ readOnly: true, minimap: { enabled: false }, lineNumbersMinChars: 3 }}
-        />
+        /></Suspense>
       )}
     </section>
   );

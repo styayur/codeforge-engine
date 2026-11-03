@@ -1,0 +1,14 @@
+[
+  {
+    "path": "apps/desktop/public/third-party/monaco-editor-0.57.0/LICENSE",
+    "sha256": "33e4ff1a06ef62ba21788ea162564ee8165269a24a9ce6ef301837447eab0ac6"
+  },
+  {
+    "path": "apps/desktop/public/third-party/monaco-editor-0.57.0/ThirdPartyNotices.txt",
+    "sha256": "790537262fc78a764e121e6b92b959bcd3f5c310b47d9d9b9e92e17fe0af5336"
+  },
+  {
+    "path": "apps/desktop/public/third-party/dompurify-3.4.17/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  }
+]

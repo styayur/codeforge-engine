@@ -54,3 +54,43 @@ pub fn parse(language: Language, path: &Path, source: &str) -> Result<Tree, Pars
         .parse(source, None)
         .expect("tree-sitter parse returns a tree for valid UTF-8 input"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dart_grammar_parses_real_source_and_preserves_utf8_ranges() {
+        let source = "// 自有合成样例\nclass Example {\n  String? name;\n  Future<List<int>> values() async {\n    return [1, 2, 3];\n  }\n}\n";
+        let tree = parse(Language::Dart, Path::new("example.dart"), source).expect("Dart grammar");
+        let root = tree.root_node();
+        assert!(!root.has_error(), "{}", root.to_sexp());
+        assert_eq!(root.end_byte(), source.len());
+        let mut cursor = root.walk();
+        let class = root
+            .named_children(&mut cursor)
+            .find(|node| node.kind() == "class_declaration")
+            .expect("class AST, not a registry-only check");
+        assert_eq!(class.start_position().row, 1);
+        assert!(
+            class
+                .utf8_text(source.as_bytes())
+                .expect("class node spans valid UTF-8 source")
+                .contains("Future<List<int>>")
+        );
+    }
+
+    #[test]
+    fn dart_grammar_reports_malformed_source_and_recovers_for_next_parse() {
+        let mut parser =
+            parser_for(Language::Dart, Some(Path::new("example.dart"))).expect("Dart grammar");
+        let malformed = parser
+            .parse("void main( {", None)
+            .expect("parser returns an error tree for malformed UTF-8 source text");
+        assert!(malformed.root_node().has_error());
+        let valid = parser
+            .parse("void main() {}", None)
+            .expect("parser returns a tree after malformed input");
+        assert!(!valid.root_node().has_error());
+    }
+}
