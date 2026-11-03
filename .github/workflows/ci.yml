@@ -75,6 +75,24 @@ jobs:
         working-directory: apps/desktop
         run: pnpm build
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Offline source and diff viewer browser acceptance
+        run: |
+          node scripts/verify_offline_editor_notices.cjs --built
+          python -m pip install -r scripts/requirements-browser.txt
+          python -m playwright install --with-deps chromium
+          python scripts/check_desktop_browser.py
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dependency-browser-${{ runner.os }}
+          path: work/dependency-browser/
+          if-no-files-found: error
+
       - name: Desktop build
         working-directory: apps/desktop
         run: pnpm tauri build --no-bundle

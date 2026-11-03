@@ -14,6 +14,14 @@ The project currently links or depends on major open-source components including
 - React, Vite, Zustand, TanStack Virtual, Monaco Editor, and lucide-react:
   distributed under their respective upstream licenses.
 
+The offline source/diff viewer bundles the locked Monaco Editor 0.57.0 graph
+with the scoped DOMPurify 3.4.17 remediation. Monaco's original MIT license and
+complete upstream third-party notices are copied unchanged into
+`apps/desktop/public/third-party/monaco-editor-0.57.0/` and accompany the built
+frontend. The viewer initializes this local graph before mounting; the loader's
+default CDN distribution is not used. This addition does not make the general
+summary a complete notice bundle for every other distribution component.
+
 Optional engines are not redistributed:
 
 - Ruff, Pyright, mypy, LibCST
