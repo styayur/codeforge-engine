@@ -1,1 +1,3 @@
 apps/desktop/public/third-party/** -text
+
+.github/workflows/*.lock.yml linguist-generated=true
