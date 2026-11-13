@@ -1,29 +1,68 @@
+# Native maintenance: 09:00 Asia/Singapore on the 1st and 15th.
+# Version updates exclude major releases; security updates retain their independent queue.
+# This ref defines the promised compiler floor, not an action runtime version.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: 0 9 1,15 * *
+      timezone: Asia/Singapore
     groups:
       rust-compatible:
-        patterns: ["*"]
-        update-types: [minor, patch]
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: 0 9 1,15 * *
+      timezone: Asia/Singapore
     groups:
       desktop-compatible:
-        patterns: ["*"]
-        update-types: [minor, patch]
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: 0 9 1,15 * *
+      timezone: Asia/Singapore
     groups:
       actions:
-        patterns: ["*"]
-    # This ref defines the promised compiler floor, not an action runtime version.
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
     ignore:
       - dependency-name: dtolnay/rust-toolchain
-        update-types: [version-update:semver-major, version-update:semver-minor, version-update:semver-patch]
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
