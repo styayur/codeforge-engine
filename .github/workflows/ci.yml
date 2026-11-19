@@ -63,6 +63,10 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
+      - name: Check patched glob consumer compatibility
+        working-directory: apps/desktop
+        run: pnpm check:minimatch
+
       - name: Frontend lint
         working-directory: apps/desktop
         run: pnpm lint

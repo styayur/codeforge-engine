@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check:minimatch": "node ../../security/verify-minimatch.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
