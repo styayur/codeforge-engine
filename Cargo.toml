@@ -74,3 +74,7 @@ strip = "symbols"
 
 [profile.dev.package."*"]
 opt-level = 1
+
+# GTK3-compatible RUSTSEC-2024-0429 backport; see security/glib-backport.md.
+[patch.crates-io]
+glib = { path = "vendor/glib" }

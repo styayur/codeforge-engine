@@ -4,3 +4,4 @@ allowBuilds:
 # Monaco 0.57 pins DOMPurify 3.4.15; keep its API while fixing sanitizer advisories.
 overrides:
   monaco-editor>dompurify: 3.4.17
+  "@typescript-eslint/typescript-estree>minimatch": 11.0.4
